@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>8방향 임계값 테스트 (초기화 포함)</title>
+  <title>8방향 임계값 테스트 (초기화 및 민감도 조절)</title>
   <style>
     body {
       display: flex;
@@ -16,12 +16,28 @@
       color: white;
       font-family: sans-serif;
     }
+    /* 민감도 조절 슬라이더 UI */
+    #controlPanel {
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    #controlPanel label {
+      font-size: 18px;
+      font-weight: bold;
+    }
+    input[type=range] {
+      width: 250px;
+      cursor: pointer;
+    }
     #grid {
       display: grid;
       grid-template-columns: repeat(3, 80px);
       grid-template-rows: repeat(3, 80px);
       gap: 10px;
-      margin-top: 20px;
+      margin-top: 10px;
       margin-bottom: 30px;
     }
     .cell {
@@ -33,7 +49,6 @@
       font-size: 24px;
       transition: background-color 0.1s;
     }
-    /* 활성화된 방향의 스타일 */
     .active {
       background-color: #00ff88;
       color: black;
@@ -51,19 +66,27 @@
     }
     #startBtn {
       background-color: #007bff;
+      margin-bottom: 20px;
     }
     #resetBtn {
       background-color: #ff4757;
-      display: none; /* 처음에는 숨김 */
+      display: none;
     }
   </style>
 </head>
 <body>
 
-  <!-- iOS 권한 요청을 위한 시작 버튼 -->
+  <!-- 민감도 조절 패널 -->
+  <div id="controlPanel">
+    <label for="thresholdSlider">민감도 (임계값): <span id="thresholdValue">15</span>도</label>
+    <input type="range" id="thresholdSlider" min="5" max="45" value="15" step="1">
+    <small style="color: #ccc;">숫자가 클수록 더 많이 기울여야 반응합니다.</small>
+  </div>
+
+  <!-- 시작 버튼 -->
   <button id="startBtn" class="btn">센서 작동 시작</button>
 
-  <!-- 8방향 + 중앙을 보여주는 3x3 그리드 -->
+  <!-- 3x3 그리드 -->
   <div id="grid" style="display: none;">
     <div class="cell" id="up-left">↖</div>
     <div class="cell" id="up">↑</div>
@@ -76,19 +99,25 @@
     <div class="cell" id="down-right">↘</div>
   </div>
 
-  <!-- 기준점 초기화 버튼 -->
+  <!-- 영점 초기화 버튼 -->
   <button id="resetBtn" class="btn">현재 위치로 영점 초기화</button>
 
   <script>
-    const THRESHOLD = 15; // 임계값 (각도)
+    // let으로 변경하여 값을 수정할 수 있게 함
+    let THRESHOLD = 15; 
+    
+    // 민감도 슬라이더 이벤트 연결
+    const thresholdSlider = document.getElementById('thresholdSlider');
+    const thresholdValue = document.getElementById('thresholdValue');
+
+    thresholdSlider.addEventListener('input', (event) => {
+      THRESHOLD = parseInt(event.target.value, 10);
+      thresholdValue.textContent = THRESHOLD;
+    });
     
     let currentDirection = 'center';
-
-    // 초기화(영점 조절)를 위한 오프셋 변수
     let offsetX = 0;
     let offsetY = 0;
-    
-    // 현재 센서의 원본 값을 저장할 변수
     let rawX = 0;
     let rawY = 0;
 
@@ -98,49 +127,41 @@
     }
 
     function handleOrientation(event) {
-      // 센서에서 받아오는 원본 데이터 저장
-      rawX = event.gamma || 0; // 좌우
-      rawY = event.beta || 0;  // 상하
+      rawX = event.gamma || 0; 
+      rawY = event.beta || 0;  
 
-      // 원본 데이터에서 초기화(오프셋) 값을 빼서 계산할 기준 각도 생성
       let x = rawX - offsetX; 
       let y = rawY - offsetY; 
 
       let dirX = '';
       let dirY = '';
 
-      // 1. 좌우(X축) 임계값 판별
       if (x > THRESHOLD) {
         dirX = '-right';
       } else if (x < -THRESHOLD) {
         dirX = '-left';
       }
 
-      // 2. 상하(Y축) 임계값 판별
       if (y > THRESHOLD) {
         dirY = 'down';
       } else if (y < -THRESHOLD) {
         dirY = 'up';
       }
 
-      // 3. 방향 조합
       let newDirection = dirY + dirX;
 
-      // 4. 문자열 정리
       if (newDirection === '') {
         newDirection = 'center';
       } else if (newDirection.startsWith('-')) {
         newDirection = newDirection.substring(1); 
       }
 
-      // 방향 변경 시에만 UI 업데이트
       if (currentDirection !== newDirection) {
         currentDirection = newDirection;
         updateUI(currentDirection);
       }
     }
 
-    // 센서 시작 버튼 클릭 이벤트
     document.getElementById('startBtn').addEventListener('click', () => {
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
@@ -163,13 +184,9 @@
       }
     });
 
-    // 영점 초기화 버튼 클릭 이벤트
     document.getElementById('resetBtn').addEventListener('click', () => {
-      // 버튼을 누르는 순간의 원본 센서 값을 오프셋으로 저장
       offsetX = rawX;
       offsetY = rawY;
-      
-      // 즉시 중앙으로 UI 리셋
       currentDirection = 'center';
       updateUI('center');
     });

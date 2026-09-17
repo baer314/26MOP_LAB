@@ -2,9 +2,11 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
+  <!-- 모바일 기기에서 화면 비율과 크기를 맞추기 위한 필수 태그 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>8방향 임계값 테스트 (초기화 및 민감도 조절)</title>
   <style>
+    /* 화면 전체를 사용하고 요소를 중앙에 배치하는 기본 스타일 */
     body {
       display: flex;
       flex-direction: column;
@@ -12,11 +14,12 @@
       align-items: center;
       height: 100vh;
       margin: 0;
-      background-color: #222;
+      background-color: #222; /* 어두운 배경 */
       color: white;
       font-family: sans-serif;
     }
-    /* 민감도 조절 슬라이더 UI */
+    
+    /* 민감도 조절 슬라이더 영역 스타일 */
     #controlPanel {
       margin-bottom: 20px;
       display: flex;
@@ -28,18 +31,23 @@
       font-size: 18px;
       font-weight: bold;
     }
+    /* 슬라이더 막대 길이 조절 */
     input[type=range] {
       width: 250px;
       cursor: pointer;
     }
+    
+    /* 3x3 형태의 8방향+중앙 그리드(표) 레이아웃 */
     #grid {
       display: grid;
-      grid-template-columns: repeat(3, 80px);
-      grid-template-rows: repeat(3, 80px);
-      gap: 10px;
+      grid-template-columns: repeat(3, 80px); /* 가로 3칸, 각 80px */
+      grid-template-rows: repeat(3, 80px);    /* 세로 3칸, 각 80px */
+      gap: 10px; /* 칸 사이 간격 */
       margin-top: 10px;
       margin-bottom: 30px;
     }
+    
+    /* 그리드 안의 각 네모 칸 스타일 */
     .cell {
       background-color: #444;
       display: flex;
@@ -47,14 +55,18 @@
       align-items: center;
       border-radius: 12px;
       font-size: 24px;
-      transition: background-color 0.1s;
+      transition: background-color 0.1s; /* 색상이 부드럽게 변하도록 설정 */
     }
+    
+    /* 핸드폰이 해당 방향으로 기울었을 때 켜지는(활성화) 스타일 */
     .active {
-      background-color: #00ff88;
+      background-color: #00ff88; /* 형광 초록색 */
       color: black;
       font-weight: bold;
-      transform: scale(1.1);
+      transform: scale(1.1); /* 크기를 살짝 키움 */
     }
+    
+    /* 공통 버튼 스타일 */
     .btn {
       padding: 15px 30px;
       font-size: 18px;
@@ -64,13 +76,14 @@
       cursor: pointer;
       font-weight: bold;
     }
+    
     #startBtn {
-      background-color: #007bff;
+      background-color: #007bff; /* 파란색 */
       margin-bottom: 20px;
     }
     #resetBtn {
-      background-color: #ff4757;
-      display: none;
+      background-color: #ff4757; /* 빨간색 */
+      display: none; /* 처음에는 화면에 보이지 않게 숨김 */
     }
   </style>
 </head>
@@ -79,14 +92,15 @@
   <!-- 민감도 조절 패널 -->
   <div id="controlPanel">
     <label for="thresholdSlider">민감도 (임계값): <span id="thresholdValue">15</span>도</label>
+    <!-- min: 최소각도, max: 최대각도, step: 1도씩 조절, value: 기본값 -->
     <input type="range" id="thresholdSlider" min="5" max="45" value="15" step="1">
     <small style="color: #ccc;">숫자가 클수록 더 많이 기울여야 반응합니다.</small>
   </div>
 
-  <!-- 시작 버튼 -->
+  <!-- 시작 버튼 (iOS 센서 권한 요청을 위해 반드시 클릭 이벤트 필요) -->
   <button id="startBtn" class="btn">센서 작동 시작</button>
 
-  <!-- 3x3 그리드 -->
+  <!-- 8방향과 중앙을 나타내는 3x3 UI 영역 (시작 버튼을 누르기 전엔 숨김) -->
   <div id="grid" style="display: none;">
     <div class="cell" id="up-left">↖</div>
     <div class="cell" id="up">↑</div>
@@ -99,83 +113,114 @@
     <div class="cell" id="down-right">↘</div>
   </div>
 
-  <!-- 영점 초기화 버튼 -->
+  <!-- 영점 초기화 버튼 (원하는 자세에서 기준점을 다시 잡을 때 사용) -->
   <button id="resetBtn" class="btn">현재 위치로 영점 초기화</button>
 
   <script>
-    // let으로 변경하여 값을 수정할 수 있게 함
-    let THRESHOLD = 15; 
+    // 1. 기본 설정 변수들
+    let THRESHOLD = 15; // 기울기 기준점(임계값). 슬라이더에 의해 값이 변할 수 있음.
     
-    // 민감도 슬라이더 이벤트 연결
+    // HTML의 슬라이더 요소들을 가져옴
     const thresholdSlider = document.getElementById('thresholdSlider');
     const thresholdValue = document.getElementById('thresholdValue');
 
+    // 슬라이더를 움직일 때마다 발생하는 이벤트
     thresholdSlider.addEventListener('input', (event) => {
+      // 슬라이더의 값을 정수로 바꿔서 THRESHOLD 변수에 저장
       THRESHOLD = parseInt(event.target.value, 10);
+      // 화면의 숫자(도) 업데이트
       thresholdValue.textContent = THRESHOLD;
     });
     
+    // 현재 활성화된 방향을 기억하는 변수 (기본은 중앙)
     let currentDirection = 'center';
+    
+    // 영점 조절을 위해 빼줄 값 (초기화 버튼을 눌렀을 때의 폰 기울기)
     let offsetX = 0;
     let offsetY = 0;
+    
+    // 기기 센서에서 들어오는 순수한 원본 기울기 값
     let rawX = 0;
     let rawY = 0;
 
+    // 2. 화면(UI) 업데이트 함수
     function updateUI(direction) {
+      // 모든 칸에서 'active' 클래스(형광 초록색)를 제거하여 초기화
       document.querySelectorAll('.cell').forEach(el => el.classList.remove('active'));
+      // 전달받은 방향의 칸에만 'active' 클래스를 추가하여 불을 켬
       document.getElementById(direction).classList.add('active');
     }
 
+    // 3. 핸드폰 기울기를 감지할 때마다 실행되는 핵심 함수
     function handleOrientation(event) {
+      // 센서 데이터 읽기 (gamma: 좌우 기울기, beta: 앞뒤 기울기)
+      // 값이 없을 경우를 대비해 0을 기본값으로 설정(|| 0)
       rawX = event.gamma || 0; 
       rawY = event.beta || 0;  
 
+      // 원본 센서 값에서 초기화(영점 조절)할 때 저장해둔 값을 뺌
+      // 이렇게 하면 초기화 시점의 폰 자세가 0도(중앙)가 됨
       let x = rawX - offsetX; 
       let y = rawY - offsetY; 
 
-      let dirX = '';
-      let dirY = '';
+      let dirX = ''; // 좌우 방향 문자열을 저장할 변수
+      let dirY = ''; // 상하 방향 문자열을 저장할 변수
 
+      // [X축 계산] 폰을 좌우로 기울였는지 확인
       if (x > THRESHOLD) {
-        dirX = '-right';
+        dirX = '-right'; // 임계값보다 크면 오른쪽
       } else if (x < -THRESHOLD) {
-        dirX = '-left';
+        dirX = '-left';  // -임계값보다 작으면 왼쪽
       }
 
+      // [Y축 계산] 폰을 위아래로 기울였는지 확인
       if (y > THRESHOLD) {
-        dirY = 'down';
+        dirY = 'down'; // 사용자 쪽으로 기울이면 아래
       } else if (y < -THRESHOLD) {
-        dirY = 'up';
+        dirY = 'up';   // 바깥쪽으로 눕히면 위
       }
 
+      // [방향 조합] 상하 문자열과 좌우 문자열을 합침
+      // 예: 위(up) + 오른쪽(-right) = 'up-right' (대각선)
       let newDirection = dirY + dirX;
 
+      // 4. 문자열 정리 및 예외 처리
       if (newDirection === '') {
+        // 상하좌우 아무 임계값도 넘지 못해서 빈 문자열이면 중앙
         newDirection = 'center';
       } else if (newDirection.startsWith('-')) {
+        // 상하 이동 없이 좌우로만 이동했을 경우 앞의 '-' 문자를 제거
+        // 예: '-right' -> 'right'
         newDirection = newDirection.substring(1); 
       }
 
+      // 5. 방향이 이전과 달라졌을 때만 화면(UI)을 업데이트
       if (currentDirection !== newDirection) {
         currentDirection = newDirection;
         updateUI(currentDirection);
       }
     }
 
+    // 4. 시작 버튼 클릭 이벤트 (센서 작동)
     document.getElementById('startBtn').addEventListener('click', () => {
+      // iOS 13 이상 기기에서는 사용자에게 센서 권한을 명시적으로 요청해야 함
       if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission()
           .then(permissionState => {
             if (permissionState === 'granted') {
+              // 권한을 허용하면 기울기 센서 이벤트 리스너 등록
               window.addEventListener('deviceorientation', handleOrientation);
+              
+              // 화면에서 시작 버튼을 숨기고, 3x3 그리드와 초기화 버튼을 나타냄
               document.getElementById('startBtn').style.display = 'none';
               document.getElementById('grid').style.display = 'grid';
               document.getElementById('resetBtn').style.display = 'block';
-              updateUI('center');
+              updateUI('center'); // 시작 시 중앙 위치 켜기
             }
           })
           .catch(console.error);
       } else {
+        // 안드로이드 등 권한 요청이 필요 없는 일반 기기의 경우 바로 실행
         window.addEventListener('deviceorientation', handleOrientation);
         document.getElementById('startBtn').style.display = 'none';
         document.getElementById('grid').style.display = 'grid';
@@ -184,9 +229,14 @@
       }
     });
 
+    // 5. 영점 초기화 버튼 클릭 이벤트
     document.getElementById('resetBtn').addEventListener('click', () => {
+      // 버튼을 누르는 순간의 순수 센서 기울기 값을 오프셋 변수에 저장
+      // 이후 handleOrientation 함수에서 이 값을 기준으로 각도를 계산하게 됨
       offsetX = rawX;
       offsetY = rawY;
+      
+      // 화면 방향을 즉시 중앙으로 초기화
       currentDirection = 'center';
       updateUI('center');
     });

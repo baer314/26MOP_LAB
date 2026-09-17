@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>스마트폰 검술 테스트</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #1a1a1a; color: #fff; font-family: sans-serif; overflow: hidden; }
+        
+        /* 상단 대시보드 */
+        #dashboard { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 10; font-size: 13px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; border: 1px solid #333; }
+        .data-row { margin-bottom: 8px; }
+        
+        /* 임계값 조절 슬라이더 UI */
+        #slider-container { margin-top: 15px; padding-top: 15px; border-top: 1px solid #444; }
+        input[type=range] { width: 100%; margin-top: 10px; accent-color: #00ff88; }
+        
+        /* 공격 판정 알림창 */
+        #attack-status { margin-top: 10px; padding: 10px; text-align: center; font-size: 16px; font-weight: bold; border-radius: 5px; border: 2px solid #00ff88; color: #00ff88; transition: all 0.1s; }
+
+        /* 하단 컨트롤 버튼 */
+        #controls { position: absolute; bottom: 20px; width: 100%; text-align: center; z-index: 10; display: flex; justify-content: center; gap: 10px; }
+        button { padding: 15px 20px; font-size: 14px; font-weight: bold; border: none; border-radius: 30px; background-color: #00ff88; color: #000; cursor: pointer; box-shadow: 0 4px 10px rgba(0,255,136,0.3); }
+        #start-btn { background-color: #ff3366; color: white; box-shadow: 0 4px 10px rgba(255,51,102,0.3); }
+        
+        /* 중앙 트래커 (칼끝 위치) */
+        #field { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        #tracker { width: 40px; height: 80px; background: linear-gradient(135deg, #00ff88, #00b3ff); border-radius: 8px; position: absolute; transition: transform 0.05s ease-out; display: flex; justify-content: center; align-items: center; box-shadow: 0 0 20px rgba(0,255,136,0.5); }
+    </style>
+</head>
+<body>
+
+    <div id="dashboard">
+        <div class="data-row"><strong>가속도 (힘)</strong></div>
+        <div class="data-row" id="acc-data">X: 0 | Y: 0 | Z: 0</div>
+        <div class="data-row" id="acc-total" style="color: #ff3366; font-weight: bold; font-size: 16px;">가속도 총합: 0</div>
+        
+        <div id="slider-container">
+            <label for="threshold-slider"><strong>⚔️ 공격 임계값 (Threshold): <span id="threshold-val">15</span></strong></label>
+            <input type="range" id="threshold-slider" min="5" max="40" value="15" step="1">
+            <div style="font-size: 11px; color: #aaa; margin-top: 5px;">* 이 수치 이상의 힘으로 휘둘러야 공격이 나갑니다.</div>
+        </div>
+
+        <div id="attack-status">대기 중...</div>
+    </div>
+
+    <div id="field">
+        <div id="tracker"></div>
+    </div>
+
+    <div id="controls">
+        <button id="start-btn">1. 센서 시작</button>
+        <button id="cal-btn">2. 중심 영점 조절</button>
+    </div>
+
+    <script>
+        // DOM 요소
+        const tracker = document.getElementById('tracker');
+        const accDataDisplay = document.getElementById('acc-data');
+        const accTotalDisplay = document.getElementById('acc-total');
+        const startBtn = document.getElementById('start-btn');
+        const calBtn = document.getElementById('cal-btn');
+        
+        // 새로 추가된 UI 요소
+        const thresholdSlider = document.getElementById('threshold-slider');
+        const thresholdVal = document.getElementById('threshold-val');
+        const attackStatus = document.getElementById('attack-status');
+
+        // 상태 변수
+        let posX = 0, posY = 0, velX = 0, velY = 0;
+        let calAlpha = 0, calBeta = 0, calGamma = 0;
+        let currentAlpha = 0, currentBeta = 0, currentGamma = 0;
+        
+        // 공격 관련 변수
+        let attackThreshold = 15; // 기본 임계값
+        let isCooldown = false;   // 쿨타임 상태 확인 (중복 타격 방지)
+
+        const FRICTION = 0.90;
+        const SENSITIVITY = 1.5;
+
+        // 슬라이더 조절 이벤트
+        thresholdSlider.addEventListener('input', (e) => {
+            attackThreshold = parseFloat(e.target.value);
+            thresholdVal.innerText = attackThreshold;
+        });
+
+        startBtn.addEventListener('click', async () => {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission === 'granted') { initSensors(); startBtn.style.display = 'none'; }
+                } catch (e) { console.error(e); }
+            } else {
+                initSensors(); startBtn.style.display = 'none';
+            }
+        });
+
+        calBtn.addEventListener('click', () => {
+            posX = 0; posY = 0; velX = 0; velY = 0;
+            calAlpha = currentAlpha; calBeta = currentBeta; calGamma = currentGamma;
+        });
+
+        // 공격 발동 함수 (쿨타임 적용)
+        function triggerAttack(movementStr) {
+            if (isCooldown) return; // 쿨타임 중이면 무시 (반동 캔슬)
+            
+            isCooldown = true; // 쿨타임 시작
+            
+            // 시각적 타격 효과
+            attackStatus.innerText = `💥 타격 성공! (${movementStr})`;
+            attackStatus.style.background = "#00ff88";
+            attackStatus.style.color = "#000";
+            tracker.style.boxShadow = "0 0 50px #ff3366";
+            tracker.style.background = "#ff3366";
+
+            // 0.4초 후 원래 상태로 복구 (이 시간이 무적/쿨타임)
+            setTimeout(() => {
+                attackStatus.innerText = "대기 중...";
+                attackStatus.style.background = "transparent";
+                attackStatus.style.color = "#00ff88";
+                tracker.style.boxShadow = "0 0 20px rgba(0,255,136,0.5)";
+                tracker.style.background = "linear-gradient(135deg, #00ff88, #00b3ff)";
+                isCooldown = false;
+            }, 400);
+        }
+
+        function initSensors() {
+            window.addEventListener('devicemotion', (event) => {
+                let ax = event.acceleration.x || 0;
+                let ay = event.acceleration.y || 0;
+                let az = event.acceleration.z || 0;
+
+                if (Math.abs(ax) < 0.5) ax = 0;
+                if (Math.abs(ay) < 0.5) ay = 0;
+
+                velX += ax * SENSITIVITY;
+                velY -= ay * SENSITIVITY;
+                velX *= FRICTION; velY *= FRICTION;
+                posX += velX; posY += velY;
+
+                const maxX = window.innerWidth / 2 - 20;
+                const maxY = window.innerHeight / 2 - 40;
+                posX = Math.max(-maxX, Math.min(posX, maxX));
+                posY = Math.max(-maxY, Math.min(posY, maxY));
+
+                // 핵심: 가속도 총합 계산 및 공격 판정
+                let totalMovement = Math.sqrt(ax*ax + ay*ay + az*az);
+                let movementStr = totalMovement.toFixed(1);
+                
+                accDataDisplay.innerText = `X: ${ax.toFixed(1)} | Y: ${ay.toFixed(1)} | Z: ${az.toFixed(1)}`;
+                accTotalDisplay.innerText = `가속도 총합: ${movementStr}`;
+
+                // 현재 가속도 총합이 슬라이더로 설정한 임계값보다 크다면 공격 발동!
+                if (totalMovement > attackThreshold) {
+                    accTotalDisplay.style.color = "#00ff88";
+                    triggerAttack(movementStr); // 타격 함수 호출
+                } else {
+                    accTotalDisplay.style.color = "#ff3366";
+                }
+
+                updateTrackerUI();
+            });
+
+            window.addEventListener('deviceorientation', (event) => {
+                currentAlpha = event.alpha || 0; currentBeta = event.beta || 0; currentGamma = event.gamma || 0;
+                updateTrackerUI();
+            });
+        }
+
+        function updateTrackerUI() {
+            tracker.style.transform = `
+                translate(${posX}px, ${posY}px)
+                rotateX(${currentBeta - calBeta}deg)
+                rotateY(${currentGamma - calGamma}deg)
+                rotateZ(${-(currentAlpha - calAlpha)}deg)
+            `;
+        }
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>스마트폰 8방향 검술 테스트 (시간 필터 적용)</title>
+    <title>스마트폰 8방향 검술 테스트 (데이터 로깅)</title>
     <style>
         body { margin: 0; padding: 0; background-color: #1a1a1a; color: #fff; font-family: sans-serif; overflow: hidden; }
         
@@ -15,11 +15,14 @@
         
         #attack-status { margin-top: 15px; padding: 10px; text-align: center; font-size: 18px; font-weight: bold; border-radius: 5px; border: 2px solid #555; color: #aaa; transition: all 0.1s; background: rgba(0,0,0,0.5); }
 
-        #controls { position: absolute; bottom: 20px; width: 100%; text-align: center; z-index: 10; display: flex; justify-content: center; gap: 10px; }
-        button { padding: 15px 20px; font-size: 14px; font-weight: bold; border: none; border-radius: 30px; background-color: #00ff88; color: #000; cursor: pointer; }
+        /* 하단 컨트롤 버튼 (줄바꿈 허용) */
+        #controls { position: absolute; bottom: 20px; width: 100%; text-align: center; z-index: 10; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 0 10px; box-sizing: border-box; }
+        button { padding: 12px 15px; font-size: 13px; font-weight: bold; border: none; border-radius: 30px; background-color: #00ff88; color: #000; cursor: pointer; }
         #start-btn { background-color: #ff3366; color: white; }
         
-        /* 8방향 가이드라인 배경 */
+        /* 🌟 신규: 기록 버튼 디자인 */
+        #record-btn { background-color: #bb86fc; color: black; box-shadow: 0 4px 10px rgba(187,134,252,0.3); }
+
         #field { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
         .guide-line { position: absolute; background: rgba(255,255,255,0.1); }
         .guide-v { width: 2px; height: 300px; }
@@ -28,13 +31,15 @@
         .guide-d2 { width: 300px; height: 2px; transform: rotate(-45deg); }
         .center-dot { position: absolute; width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; }
 
-        /* 중앙 트래커 */
         #tracker { width: 40px; height: 80px; background: linear-gradient(135deg, #444, #888); border-radius: 8px; position: absolute; transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; justify-content: center; align-items: center; border: 2px solid #222; }
         #tracker::after { content: '상'; position: absolute; top: 5px; font-size: 12px; color: #111; font-weight: bold; }
         
-        /* 로딩 바 (힘 유지 상태 시각화) */
         #charge-bar-bg { width: 100%; height: 5px; background: #333; margin-top: 5px; border-radius: 3px; overflow: hidden; }
         #charge-bar { width: 0%; height: 100%; background: #ff3366; transition: width 0.05s linear; }
+
+        /* 🌟 신규: 기록 결과 모달창 */
+        #record-modal { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; }
+        #record-textarea { width: 100%; height: 60%; background: #222; color: #00ff88; border: 1px solid #444; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; white-space: pre; overflow-x: auto; margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -43,19 +48,14 @@
         <div class="data-row"><strong>실시간 가속도</strong></div>
         <div class="data-row" id="acc-data">X: 0 | Y: 0 | Z: 0</div>
         
-        <!-- 1. 공격 임계값 조절 -->
         <div class="slider-container">
             <label><strong>⚔️ 필요 가속도 (Threshold): <span id="threshold-val" style="color:#00b3ff;">15</span></strong></label>
             <input type="range" id="threshold-slider" min="5" max="40" value="15" step="1">
         </div>
 
-        <!-- 2. 힘 유지 시간 조절 (신규) -->
         <div class="slider-container">
             <label><strong>⏱️ 최소 유지 시간 (Duration): <span id="duration-val" style="color:#ff3366;">100</span> ms</strong></label>
             <input type="range" id="duration-slider" min="0" max="300" value="100" step="10">
-            <div style="font-size: 11px; color: #aaa; margin-top: 5px;">* 이 시간 동안 위의 힘이 끊기지 않아야 공격이 나갑니다.</div>
-            
-            <!-- 힘이 얼마나 모이고 있는지 보여주는 UI 바 -->
             <div id="charge-bar-bg"><div id="charge-bar"></div></div>
         </div>
 
@@ -73,11 +73,20 @@
 
     <div id="controls">
         <button id="start-btn">1. 센서 시작</button>
-        <button id="cal-btn">2. 중심 영점 조절</button>
+        <button id="cal-btn">2. 중심 영점</button>
+        <!-- 🌟 기록 시작 버튼 -->
+        <button id="record-btn">3. 1초 가속도 기록</button>
+    </div>
+
+    <!-- 🌟 기록 데이터 확인용 모달창 -->
+    <div id="record-modal">
+        <h3 style="margin-top: 0; color: white;">📊 1초 가속도 기록 결과</h3>
+        <p style="font-size: 12px; color: #aaa; margin-bottom: 10px;">전체 선택 후 복사하여 엑셀(스프레드시트)에 붙여넣기 하시면 그래프를 그릴 수 있습니다.</p>
+        <textarea id="record-textarea" readonly></textarea>
+        <button id="close-record-btn" style="background-color: #fff;">닫기</button>
     </div>
 
     <script>
-        // DOM 요소
         const tracker = document.getElementById('tracker');
         const accDataDisplay = document.getElementById('acc-data');
         const startBtn = document.getElementById('start-btn');
@@ -89,6 +98,16 @@
         const attackStatus = document.getElementById('attack-status');
         const chargeBar = document.getElementById('charge-bar');
 
+        // 🌟 신규: 로깅 관련 요소 및 변수
+        const recordBtn = document.getElementById('record-btn');
+        const recordModal = document.getElementById('record-modal');
+        const recordTextarea = document.getElementById('record-textarea');
+        const closeRecordBtn = document.getElementById('close-record-btn');
+        
+        let isRecording = false;        // 현재 기록 중인지 여부
+        let recordStartTime = 0;        // 기록 시작 시간
+        let recordedData = [];          // 1초간의 데이터를 담을 배열
+
         let calAlpha = 0, calBeta = 0, calGamma = 0;
         let currentAlpha = 0, currentBeta = 0, currentGamma = 0;
         
@@ -96,27 +115,16 @@
         let attackThreshold = 15; 
         let isCooldown = false;   
 
-        // ==========================================
-        // 🌟 신규 추가: 시간 기반 판정 변수
-        // ==========================================
-        let requiredDuration = 100;       // 필요한 유지 시간 (밀리초)
-        let isAccelerating = false;       // 현재 힘을 받고 있는 상태인지 여부
-        let accelerationStartTime = 0;    // 임계값을 처음 돌파한 시간
-        let sumAx = 0, sumAy = 0;         // 유지 시간 동안의 X, Y 가속도를 모두 더함 (방향 정확도 증가)
+        let requiredDuration = 100;       
+        let isAccelerating = false;       
+        let accelerationStartTime = 0;    
+        let sumAx = 0, sumAy = 0;         
 
         const MOVE_DIST = 130; 
         const DIAG_DIST = MOVE_DIST * 0.707;
 
-        // 슬라이더 이벤트
-        thresholdSlider.addEventListener('input', (e) => {
-            attackThreshold = parseFloat(e.target.value);
-            thresholdVal.innerText = attackThreshold;
-        });
-
-        durationSlider.addEventListener('input', (e) => {
-            requiredDuration = parseInt(e.target.value);
-            durationVal.innerText = requiredDuration;
-        });
+        thresholdSlider.addEventListener('input', (e) => { attackThreshold = parseFloat(e.target.value); thresholdVal.innerText = attackThreshold; });
+        durationSlider.addEventListener('input', (e) => { requiredDuration = parseInt(e.target.value); durationVal.innerText = requiredDuration; });
 
         startBtn.addEventListener('click', async () => {
             if (typeof DeviceMotionEvent.requestPermission === 'function') {
@@ -129,15 +137,52 @@
             }
         });
 
-        calBtn.addEventListener('click', () => {
-            calAlpha = currentAlpha; calBeta = currentBeta; calGamma = currentGamma;
+        calBtn.addEventListener('click', () => { calAlpha = currentAlpha; calBeta = currentBeta; calGamma = currentGamma; });
+
+        // ==========================================
+        // 🌟 핵심 로깅 버튼 로직
+        // ==========================================
+        recordBtn.addEventListener('click', () => {
+            if (isRecording) return; // 이미 기록 중이면 무시
+            
+            isRecording = true;
+            recordedData = []; // 배열 초기화
+            recordStartTime = performance.now(); // 타이머 시작
+            
+            // 버튼 상태 변경 (시각적 피드백)
+            recordBtn.innerText = "🔴 기록 중! 휘두르세요!";
+            recordBtn.style.backgroundColor = "white";
+
+            // 정확히 1000ms(1초) 뒤에 기록 종료 및 결과창 오픈
+            setTimeout(() => {
+                isRecording = false;
+                recordBtn.innerText = "3. 1초 가속도 기록";
+                recordBtn.style.backgroundColor = "#bb86fc";
+                showRecordResult(); // 결과 보여주는 함수 호출
+            }, 1000);
         });
+
+        // 결과 모달창 닫기 버튼
+        closeRecordBtn.addEventListener('click', () => {
+            recordModal.style.display = "none";
+        });
+
+        // 배열에 담긴 데이터를 텍스트로 변환하여 화면에 출력
+        function showRecordResult() {
+            // 엑셀에서 바로 열 수 있도록 탭(Tab)으로 구분된 헤더 생성
+            let tsvString = "Time(ms)\tTotal\tX\tY\tZ\n";
+            
+            recordedData.forEach(data => {
+                tsvString += `${data.time}\t${data.total}\t${data.x}\t${data.y}\t${data.z}\n`;
+            });
+            
+            recordTextarea.value = tsvString;
+            recordModal.style.display = "flex"; // 모달창 열기
+        }
 
         function triggerAttack(ax, ay) {
             if (isCooldown) return; 
             isCooldown = true; 
-
-            // 합산된(평균) ax, ay 값을 이용해 각도 계산 -> 흔들림에 의한 오차를 완벽히 잡음!
             let angleRad = Math.atan2(ay, ax);
             let angleDeg = angleRad * (180 / Math.PI);
             let directionStr = "";
@@ -155,22 +200,16 @@
             attackStatus.style.borderColor = "#00ff88";
             attackStatus.style.color = "#00ff88";
             tracker.style.background = "linear-gradient(135deg, #00ff88, #00b3ff)";
-            
             updateTrackerUI(); 
-
-            // 초기화
-            chargeBar.style.width = "0%";
-            chargeBar.style.background = "#ff3366";
+            chargeBar.style.width = "0%"; chargeBar.style.background = "#ff3366";
             
             setTimeout(() => {
                 attackStatus.innerText = "대기 중 (정중앙)";
                 attackStatus.style.borderColor = "#555";
                 attackStatus.style.color = "#aaa";
                 tracker.style.background = "linear-gradient(135deg, #444, #888)";
-                
                 targetPosX = 0; targetPosY = 0;
                 updateTrackerUI();
-                
                 isCooldown = false;
             }, 500);
         }
@@ -185,48 +224,49 @@
                 let totalMovement = Math.sqrt(ax*ax + ay*ay + az*az);
 
                 // ==========================================
-                // 🌟 핵심 로직: 시간 기반 공격 판정
+                // 🌟 가속도 데이터 기록 (isRecording이 true일 때만)
                 // ==========================================
-                if (totalMovement > attackThreshold && !isCooldown) {
+                if (isRecording) {
+                    // 버튼을 누른 시점으로부터 몇 밀리초(ms)가 지났는지 계산
+                    let elapsedTime = Math.round(performance.now() - recordStartTime);
                     
+                    recordedData.push({
+                        time: elapsedTime,
+                        total: totalMovement.toFixed(2),
+                        x: ax.toFixed(2),
+                        y: ay.toFixed(2),
+                        z: az.toFixed(2)
+                    });
+                }
+
+                if (totalMovement > attackThreshold && !isCooldown) {
                     if (!isAccelerating) {
-                        // 1. 처음으로 임계값을 뚫었을 때 (타이머 시작)
                         isAccelerating = true;
-                        accelerationStartTime = performance.now(); // 밀리초 단위 정밀 시간
-                        sumAx = ax;
-                        sumAy = ay;
+                        accelerationStartTime = performance.now(); 
+                        sumAx = ax; sumAy = ay;
                     } else {
-                        // 2. 임계값을 뚫은 상태가 유지될 때 (데이터 누적)
-                        sumAx += ax;
-                        sumAy += ay;
+                        sumAx += ax; sumAy += ay;
+                        let elapsedTime = performance.now() - accelerationStartTime; 
                         
-                        let elapsedTime = performance.now() - accelerationStartTime; // 유지된 시간 계산
-                        
-                        // UI 연출: 얼마나 유지되고 있는지 바(Bar)로 보여줌
                         let progress = Math.min((elapsedTime / requiredDuration) * 100, 100);
                         chargeBar.style.width = progress + "%";
 
-                        // 3. 목표한 유지 시간에 도달했을 때 (공격 발동!)
                         if (elapsedTime >= requiredDuration) {
-                            chargeBar.style.background = "#00ff88"; // 발동 순간 초록색으로 펑!
-                            // 누적된(평균) 방향 데이터를 넘겨줌
+                            chargeBar.style.background = "#00ff88"; 
                             triggerAttack(sumAx, sumAy); 
-                            isAccelerating = false; // 타이머 초기화
+                            isAccelerating = false; 
                         }
                     }
                 } else {
-                    // 힘이 기준치 아래로 떨어졌거나 쿨타임 중이면 즉시 취소
                     if (isAccelerating) {
                         isAccelerating = false;
-                        chargeBar.style.width = "0%"; // 충전 바 초기화
+                        chargeBar.style.width = "0%"; 
                     }
                 }
             });
 
             window.addEventListener('deviceorientation', (event) => {
-                currentAlpha = event.alpha || 0; 
-                currentBeta = event.beta || 0; 
-                currentGamma = event.gamma || 0;
+                currentAlpha = event.alpha || 0; currentBeta = event.beta || 0; currentGamma = event.gamma || 0;
                 if(!isCooldown) updateTrackerUI();
             });
         }

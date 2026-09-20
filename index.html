@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Air Mouse Dashboard</title>
+    <title>Advanced Air Mouse</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
@@ -12,39 +12,36 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background-color: #0f172a; /* Slate 900 */
             color: #f8fafc;
-            /* Prevent mobile pull-to-refresh and scrolling */
             overscroll-behavior: none;
             touch-action: none; 
             margin: 0;
             overflow: hidden;
         }
 
+        /* 
+         * 막대 모양의 형광 커서 스타일 
+         * width: 8px, height: 60px 및 형광 효과 적용
+         */
         #cursor {
             position: absolute;
             top: 0;
             left: 0;
             width: 8px;
             height: 60px;
-            background-color: #00ffcc; /* 형광 녹색 */
-            border-radius: 4px; /* 모서리 둥글게 */
-            box-shadow: 0 0 15px rgba(0, 255, 204, 0.8), 0 0 5px rgba(255, 255, 255, 0.5);
-            /* Center the cursor element on its coordinates */
-            transform: translate(-50%, -50%);
-            pointer-events: none; /* Let clicks pass through */
+            background-color: #00ffcc;
+            border-radius: 4px;
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.9), 0 0 5px rgba(255, 255, 255, 0.8);
+            transform-origin: center center;
+            pointer-events: none;
             z-index: 50;
             will-change: transform;
         }
 
-        .panel-blur {
-            background: rgba(30, 41, 59, 0.7); /* Slate 800 with opacity */
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        /* Custom range slider styling */
-        input[type=range] {
-            accent-color: #3b82f6; /* Blue 500 */
         }
     </style>
 </head>
@@ -53,250 +50,176 @@
     <!-- The Virtual Cursor -->
     <div id="cursor" style="display: none;"></div>
 
-    <!-- Start / Calibration Overlay -->
-    <div id="overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/90 backdrop-blur-sm px-4">
-        <div class="panel-blur p-8 rounded-2xl max-w-sm w-full text-center shadow-2xl">
-            <i class="fa-solid fa-satellite-dish text-5xl text-blue-400 mb-4 animate-pulse"></i>
-            <h1 class="text-2xl font-bold mb-2">가상 에어 마우스</h1>
+    <!-- Start Overlay -->
+    <div id="overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/90 backdrop-blur-md px-4">
+        <div class="glass-panel p-8 rounded-2xl max-w-sm w-full text-center shadow-2xl">
+            <i class="fa-solid fa-mobile-screen text-5xl text-[#00ffcc] mb-4 drop-shadow-[0_0_10px_rgba(0,255,204,0.5)]"></i>
+            <h1 class="text-2xl font-bold mb-2">어드밴스드 에어 마우스</h1>
             <p class="text-sm text-slate-400 mb-6">
-                기기를 평행하게 들고 시작 버튼을 누르면 현재 위치가 화면의 중앙(0,0)으로 영점 조절됩니다.
+                기기를 들고 시작 버튼을 누르세요.<br>방어 로직과 데드존이 적용되어 더욱 안정적입니다.
             </p>
-            <button id="btn-start" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-[0_0_15px_rgba(37,99,235,0.5)] active:scale-95">
-                <i class="fa-solid fa-crosshairs mr-2"></i> 시작 및 영점 조절
+            <button id="btn-start" class="w-full bg-[#00ffcc] hover:bg-[#00e6b8] text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-[0_0_15px_rgba(0,255,204,0.4)] active:scale-95">
+                <i class="fa-solid fa-play mr-2"></i> 센서 시작
             </button>
             <div id="perm-msg" class="mt-4 text-xs text-red-400 hidden">
-                권한 요청이 거부되었습니다. 다시 시도해주세요.
+                권한 요청이 거부되었거나 센서를 사용할 수 없습니다.
             </div>
         </div>
     </div>
 
-    <!-- Control Panel (Bottom) -->
-    <div class="panel-blur m-4 p-4 rounded-xl z-40">
-        <div class="flex justify-between items-center mb-4">
-            <h2 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-sliders mr-2"></i>제어판</h2>
-            <button id="btn-recalibrate" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition-colors">
-                <i class="fa-solid fa-rotate-right mr-1"></i> 재정렬
-            </button>
-        </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- Sensibility Control -->
-            <div class="flex flex-col">
-                <label class="text-xs text-slate-400 mb-1 flex justify-between">
-                    <span>민감도 (Sensitivity)</span>
-                    <span id="lbl-sens">15 px/deg</span>
-                </label>
-                <input type="range" id="slider-sens" min="5" max="40" step="1" value="15" class="w-full">
-            </div>
-
-            <!-- Filter Strength (LPF) Control -->
-            <div class="flex flex-col">
-                <label class="text-xs text-slate-400 mb-1 flex justify-between">
-                    <span>보정 강도 (Smoothing)</span>
-                    <span id="lbl-filter">0.10 (부드러움)</span>
-                </label>
-                <input type="range" id="slider-filter" min="0.01" max="1.0" step="0.01" value="0.1" class="w-full">
-            </div>
-        </div>
-
-        <!-- Debug Info -->
-        <div class="mt-4 grid grid-cols-2 gap-2 text-[10px] sm:text-xs font-mono text-slate-400 bg-slate-900/50 p-2 rounded-lg border border-slate-700/50">
-            <div>
-                <span class="text-blue-400">RAW A:</span> <span id="debug-raw-a">0.0</span>°<br>
-                <span class="text-green-400">RAW B:</span> <span id="debug-raw-b">0.0</span>°<br>
-                <span class="text-purple-400">RAW G:</span> <span id="debug-raw-g">0.0</span>°
-            </div>
-            <div>
-                <span class="text-red-400">SMOOTH X:</span> <span id="debug-smooth-x">0</span>px<br>
-                <span class="text-yellow-400">SMOOTH Y:</span> <span id="debug-smooth-y">0</span>px<br>
-                <span class="text-white">ROTATION:</span> <span id="debug-smooth-r">0</span>°
-            </div>
-        </div>
+    <!-- Reset Button (Bottom Center) -->
+    <div id="control-panel" class="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-40 hidden">
+        <button id="btn-reset" class="glass-panel text-white font-semibold py-3 px-8 rounded-full shadow-lg flex items-center gap-2 hover:bg-slate-700/80 active:scale-95 transition-all border border-slate-500/50">
+            <i class="fa-solid fa-crosshairs text-[#00ffcc]"></i> 영점 초기화
+        </button>
     </div>
 
     <script>
         // DOM Elements
         const elCursor = document.getElementById('cursor');
         const elOverlay = document.getElementById('overlay');
+        const elControlPanel = document.getElementById('control-panel');
         const btnStart = document.getElementById('btn-start');
-        const btnRecalibrate = document.getElementById('btn-recalibrate');
+        const btnReset = document.getElementById('btn-reset');
         const msgPerm = document.getElementById('perm-msg');
-        
-        // Sliders
-        const sliderSens = document.getElementById('slider-sens');
-        const sliderFilter = document.getElementById('slider-filter');
-        const lblSens = document.getElementById('lbl-sens');
-        const lblFilter = document.getElementById('lbl-filter');
-
-        // Debug
-        const dbgRawA = document.getElementById('debug-raw-a');
-        const dbgRawB = document.getElementById('debug-raw-b');
-        const dbgRawG = document.getElementById('debug-raw-g');
-        const dbgSmoothX = document.getElementById('debug-smooth-x');
-        const dbgSmoothY = document.getElementById('debug-smooth-y');
-        const dbgSmoothR = document.getElementById('debug-smooth-r');
 
         // State Variables
         let isTracking = false;
         
-        // Raw Data
-        let rawAlpha = 0;
-        let rawBeta = 0;
-        let rawGamma = 0;
-        
-        // Calibration Center
-        let baseAlpha = null;
-        let baseBeta = null;
-        let baseGamma = null;
+        // 이전 프레임 데이터 (변화량 추적용)
+        let prevAlpha = null;
+        let prevBeta = null;
+        let prevGamma = null;
 
-        // Position Variables
+        // 중앙 좌표 계산
         let centerX = window.innerWidth / 2;
         let centerY = window.innerHeight / 2;
         
-        // Targets (before filtering)
+        // 목표 위치 및 회전 (Target)
         let targetX = centerX;
         let targetY = centerY;
         let targetRotation = 0;
         
-        // Smoothed Output (applied Low-Pass Filter)
+        // 부드럽게 필터링된 최종 출력값 (Smoothed)
         let smoothedX = centerX;
         let smoothedY = centerY;
         let smoothedRotation = 0;
 
-        // Configuration
-        let sensitivity = parseFloat(sliderSens.value);
-        let filterStrength = parseFloat(sliderFilter.value);
+        // 설정값 (Settings)
+        const SENSITIVITY_POS = 15.0; // 이동 민감도
+        const SENSITIVITY_ROT = 2.0;  // 회전 민감도
+        const DEADZONE = 0.05;        // 미세 떨림 무시(데드존) 기준각도
+        
+        // 로우패스 필터 강도 (Low = 부드러움, High = 빠름)
+        const LPF_POS = 0.15; // 위치는 반응성 있게
+        const LPF_ROT = 0.05; // 회전은 더 안정적이고 묵직하게
 
-        // Update Settings from UI
-        sliderSens.addEventListener('input', (e) => {
-            sensitivity = parseFloat(e.target.value);
-            lblSens.textContent = `${sensitivity} px/deg`;
-        });
-
-        sliderFilter.addEventListener('input', (e) => {
-            filterStrength = parseFloat(e.target.value);
-            // Smaller value = more smoothing. Larger value = closer to raw data.
-            let label = "보통";
-            if(filterStrength < 0.15) label = "아주 부드러움";
-            else if(filterStrength > 0.5) label = "빠른 반응";
-            lblFilter.textContent = `${filterStrength.toFixed(2)} (${label})`;
-        });
-
-        // Handle Window Resize
         window.addEventListener('resize', () => {
             centerX = window.innerWidth / 2;
             centerY = window.innerHeight / 2;
         });
 
-        // Handle Device Orientation Data
         function handleOrientation(event) {
-            // Some devices might return null if hardware is missing
-            if (event.alpha === null || event.beta === null || event.gamma === null) return;
-            
-            rawAlpha = event.alpha;
-            rawBeta = event.beta;
-            rawGamma = event.gamma;
+            let rawAlpha = event.alpha;
+            let rawBeta = event.beta;
+            let rawGamma = event.gamma;
 
-            if (baseAlpha === null || baseBeta === null || baseGamma === null) return; // Not calibrated yet
+            if (rawAlpha === null || rawBeta === null || rawGamma === null) return;
 
-            // 1. Calculate Deltas
-            let deltaAlpha = rawAlpha - baseAlpha;
-            let deltaBeta = rawBeta - baseBeta;
-            let deltaGamma = rawGamma - baseGamma;
-
-            // 2. Wrap-around mitigation (0-360 boundaries)
-            // If the angle jumps from 359 to 1, delta is -358. We fix it to +2.
-            if (deltaAlpha > 180) deltaAlpha -= 360;
-            if (deltaAlpha < -180) deltaAlpha += 360;
-            
-            // Beta usually ranges -180 to 180, but applying wrap-around fix prevents flip glitches
-            if (deltaBeta > 180) deltaBeta -= 360;
-            if (deltaBeta < -180) deltaBeta += 360;
-
-            if (deltaGamma > 180) deltaGamma -= 360;
-            if (deltaGamma < -180) deltaGamma += 360;
-
-            // 3. Map to Screen Coordinates
-            // Requirement: alpha increases -> left (X decreases, - 사용으로 좌우 반전)
-            targetX = centerX - (deltaAlpha * sensitivity);
-            
-            // Requirement: beta increases -> up (Y decreases, since screen 0 is at top)
-            targetY = centerY - (deltaBeta * sensitivity);
-
-            // Requirement: gamma changes -> rotation (회전 민감도를 위해 증폭 계수 적용)
-            targetRotation = deltaGamma * 2.0;
-        }
-
-        // Main Animation & Physics Loop
-        function loop() {
-            if (isTracking) {
-                // Apply Low-Pass Filter (LPF)
-                // Formula: smoothed = smoothed + filterStrength * (target - smoothed)
-                smoothedX += filterStrength * (targetX - smoothedX);
-                smoothedY += filterStrength * (targetY - smoothedY);
-                smoothedRotation += filterStrength * (targetRotation - smoothedRotation);
-
-                // Clamp values to keep cursor on screen
-                smoothedX = Math.max(0, Math.min(window.innerWidth, smoothedX));
-                smoothedY = Math.max(0, Math.min(window.innerHeight, smoothedY));
-
-                // Update Cursor Position & Rotation visually
-                // 중심점을 기준으로 이동 후 회전 적용
-                elCursor.style.transform = `translate(${smoothedX}px, ${smoothedY}px) translate(-50%, -50%) rotate(${smoothedRotation}deg)`;
-
-                // Update Debug UI
-                dbgRawA.textContent = rawAlpha.toFixed(1);
-                dbgRawB.textContent = rawBeta.toFixed(1);
-                if(dbgRawG) dbgRawG.textContent = rawGamma.toFixed(1);
-                dbgSmoothX.textContent = Math.round(smoothedX);
-                dbgSmoothY.textContent = Math.round(smoothedY);
-                if(dbgSmoothR) dbgSmoothR.textContent = Math.round(smoothedRotation);
+            // 최초 실행 시 이전 값을 현재 값으로 세팅 후 종료 (Delta 계산을 위해)
+            if (prevAlpha === null) {
+                prevAlpha = rawAlpha;
+                prevBeta = rawBeta;
+                prevGamma = rawGamma;
+                return;
             }
 
+            // 1. 변화량(Delta) 계산
+            let dAlpha = rawAlpha - prevAlpha;
+            let dBeta = rawBeta - prevBeta;
+            let dGamma = rawGamma - prevGamma;
+
+            // 2. Alpha Wrap-around (0 <-> 360) 방어 로직
+            if (dAlpha > 180) dAlpha -= 360;
+            else if (dAlpha < -180) dAlpha += 360;
+
+            // 3. Extreme Jump Rejection (짐벌 락, 경계값 튀김 방어)
+            // 단일 프레임 내에서 40도 이상 값이 튀면 비정상적인 센서 노이즈나 Flip으로 간주하고 버림
+            if (Math.abs(dBeta) > 40 || Math.abs(dGamma) > 40 || Math.abs(dAlpha) > 40) {
+                // 값은 튀었지만, 다음 프레임에서의 정상적인 Delta 계산을 위해 기준점은 갱신해줍니다.
+                prevAlpha = rawAlpha;
+                prevBeta = rawBeta;
+                prevGamma = rawGamma;
+                return; 
+            }
+
+            // 4. Deadzone (미세 손떨림 방지)
+            if (Math.abs(dAlpha) < DEADZONE) dAlpha = 0;
+            if (Math.abs(dBeta) < DEADZONE) dBeta = 0;
+            if (Math.abs(dGamma) < DEADZONE) dGamma = 0;
+
+            // 5. Target 업데이트 로직 적용
+            // 조건: Alpha 증가 시 왼쪽 이동 (X 감소)
+            targetX -= dAlpha * SENSITIVITY_POS;
+            
+            // 조건: Beta 증가 시 위쪽 이동 (화면 Y=0이 위쪽이므로 Y 감소)
+            targetY -= dBeta * SENSITIVITY_POS;
+            
+            // 조건: Gamma 변화량에 따라 회전
+            targetRotation += dGamma * SENSITIVITY_ROT;
+
+            // 화면 밖으로 나가지 않도록 Clamp
+            targetX = Math.max(0, Math.min(window.innerWidth, targetX));
+            targetY = Math.max(0, Math.min(window.innerHeight, targetY));
+
+            // 다음 프레임을 위해 이전 값 갱신
+            prevAlpha = rawAlpha;
+            prevBeta = rawBeta;
+            prevGamma = rawGamma;
+        }
+
+        function loop() {
+            if (isTracking) {
+                // 독립적인 로우패스 필터 적용 (위치와 회전 계수를 다르게 설정)
+                smoothedX += LPF_POS * (targetX - smoothedX);
+                smoothedY += LPF_POS * (targetY - smoothedY);
+                smoothedRotation += LPF_ROT * (targetRotation - smoothedRotation);
+
+                // 커서 DOM 업데이트
+                elCursor.style.transform = `translate(${smoothedX}px, ${smoothedY}px) translate(-50%, -50%) rotate(${smoothedRotation}deg)`;
+            }
             requestAnimationFrame(loop);
         }
 
-        // Start Tracking & Set Center Base
         function startTracking() {
             window.addEventListener('deviceorientation', handleOrientation);
             
-            // Allow a small delay for sensors to stabilize before setting base
-            setTimeout(() => {
-                baseAlpha = rawAlpha;
-                baseBeta = rawBeta;
-                baseGamma = rawGamma;
-                
-                // Snap smoothed coords to center immediately
-                smoothedX = targetX = centerX;
-                smoothedY = targetY = centerY;
-                smoothedRotation = targetRotation = 0;
-                
-                isTracking = true;
-                elOverlay.classList.add('hidden');
-                elCursor.style.display = 'block';
-                
-                // Start animation loop if not already running
-                requestAnimationFrame(loop);
-            }, 300);
+            // 초기 위치 중앙으로 세팅
+            targetX = smoothedX = centerX;
+            targetY = smoothedY = centerY;
+            targetRotation = smoothedRotation = 0;
+            
+            isTracking = true;
+            elOverlay.classList.add('hidden');
+            elControlPanel.classList.remove('hidden');
+            elCursor.style.display = 'block';
+            
+            requestAnimationFrame(loop);
         }
 
-        // Recalibrate (Reset center point)
-        btnRecalibrate.addEventListener('click', () => {
-            baseAlpha = rawAlpha;
-            baseBeta = rawBeta;
-            baseGamma = rawGamma;
-            
-            // Reset to exact center immediately to prevent flying cursor
+        // 영점 초기화 로직 (화면 중앙 & 세로 정렬)
+        btnReset.addEventListener('click', () => {
             targetX = centerX;
             targetY = centerY;
             targetRotation = 0;
-
+            
+            // 필터를 거치지 않고 즉시 리셋되도록 smoothed 값도 강제 일치시킴
             smoothedX = centerX;
             smoothedY = centerY;
             smoothedRotation = 0;
         });
 
-        // Request Permissions (Required for iOS 13+)
+        // 권한 요청 로직 (iOS 13+ 대응)
         btnStart.addEventListener('click', () => {
             msgPerm.classList.add('hidden');
             
@@ -309,13 +232,11 @@
                             msgPerm.classList.remove('hidden');
                         }
                     })
-                    .catch(console.error);
+                    .catch(() => msgPerm.classList.remove('hidden'));
             } else {
-                // Non-iOS 13+ devices (Android, older iOS)
-                startTracking();
+                startTracking(); // Android 등 권한 요청이 필요 없는 환경
             }
         });
-
     </script>
 </body>
 </html>

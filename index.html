@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>와이퍼 원기둥 & 공격 센서</title>
+    <title>안정화된 와이퍼 원기둥 & 공격 센서</title>
     <style>
         body {
             margin: 0;
@@ -19,15 +19,8 @@
             transition: background-color 0.1s;
         }
 
-        /* 붉은색 번쩍임(공격) 효과 */
-        body.attack {
-            background-color: #ff0000;
-        }
-
-        /* 유지 중일 때의 시각적 피드백 (노란색) */
-        body.charging {
-            background-color: #4a4a00;
-        }
+        body.attack { background-color: #ff0000; }
+        body.charging { background-color: #4a4a00; }
 
         #ui-layer {
             position: absolute;
@@ -55,17 +48,31 @@
         .data-row {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             font-family: monospace;
             font-size: 14px;
             margin-top: 10px;
         }
+
+        /* 영점 조절 버튼 */
+        #reset-btn {
+            padding: 8px 12px;
+            font-size: 12px;
+            background-color: #ff5722;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #reset-btn:active { background-color: #e64a19; }
 
         /* 3D 씬 설정 */
         #scene {
             perspective: 800px;
             width: 200px;
             height: 300px;
-            margin-top: 200px;
+            margin-top: 220px;
             position: relative;
         }
 
@@ -74,12 +81,10 @@
             height: 100%;
             position: absolute;
             transform-style: preserve-3d;
-            /* 와이퍼처럼 하단을 기준으로 움직이도록 축 변경 */
             transform-origin: 50% 100%; 
             transform: rotateZ(0deg); 
         }
 
-        /* 원기둥의 각 면 (8각 기둥) */
         .face {
             position: absolute;
             width: 80px;
@@ -98,7 +103,6 @@
             opacity: 0.9;
         }
 
-        /* 원기둥 형태를 잡기 위한 3D 회전 */
         .face:nth-child(1) { transform: rotateY(0deg) translateZ(96px); }
         .face:nth-child(2) { transform: rotateY(45deg) translateZ(96px); }
         .face:nth-child(3) { transform: rotateY(90deg) translateZ(96px); }
@@ -128,7 +132,6 @@
             transform: translate(-50%, -50%) scale(1.2);
         }
 
-        /* iOS 권한 요청 오버레이 */
         #permission-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -140,7 +143,7 @@
             z-index: 100;
         }
 
-        button {
+        .start-btn {
             padding: 15px 30px;
             font-size: 18px;
             background-color: #4facfe;
@@ -155,8 +158,8 @@
 
     <div id="permission-overlay">
         <h2>센서 테스트</h2>
-        <p>기기를 세로로 들고 시작해주세요.</p>
-        <button id="start-btn">센서 권한 허용 및 시작</button>
+        <p>기기를 편하게 쥐고 시작해주세요.</p>
+        <button class="start-btn" id="start-btn">센서 권한 허용 및 시작</button>
     </div>
 
     <!-- 설정 UI -->
@@ -170,8 +173,8 @@
             <input type="range" id="duration-slider" min="0" max="1000" value="150" step="10">
         </div>
         <div class="data-row">
-            <span>X 기울기: <span id="val-beta">0</span>°</span>
-            <span>Y 회전속도: <span id="val-gamma">0</span></span>
+            <span>보정된 기울기: <span id="val-beta">0</span>°</span>
+            <button id="reset-btn">영점 조절 (초기화)</button>
         </div>
     </div>
 
@@ -196,24 +199,24 @@
         const startBtn = document.getElementById('start-btn');
         const overlay = document.getElementById('permission-overlay');
         const attackMsg = document.getElementById('attack-msg');
+        const resetBtn = document.getElementById('reset-btn');
         
         const deadzoneSlider = document.getElementById('deadzone-slider');
         const deadzoneValDisplay = document.getElementById('deadzone-val');
         const durationSlider = document.getElementById('duration-slider');
-        const durationValDisplay = document.getElementById('duration-val');
-        
-        const valBeta = document.getElementById('val-beta');
-        const valGamma = document.getElementById('val-gamma');
+        const valBetaDisplay = document.getElementById('val-beta');
 
         // 상태 변수
         let attackThreshold = 300; 
-        let requiredHoldTime = 150; // ms 단위로 공격을 유지해야 하는 시간
+        let requiredHoldTime = 150; 
         
         let isCooldown = false; 
         let isHolding = false;
         let holdStartTime = 0;
 
-        // 회전 관련 변수 (LERP용)
+        // 회전 및 필터링 변수
+        let rawBeta = 0;         // 센서에서 들어오는 날것의 각도
+        let betaOffset = 0;      // 영점 조절을 위한 기준 각도
         let targetRotateZ = 0;
         let currentRotateZ = 0;
 
@@ -225,7 +228,14 @@
 
         durationSlider.addEventListener('input', (e) => {
             requiredHoldTime = parseInt(e.target.value);
-            durationValDisplay.innerText = requiredHoldTime;
+            document.getElementById('duration-val').innerText = requiredHoldTime;
+        });
+
+        // 영점 조절 버튼 이벤트
+        resetBtn.addEventListener('click', () => {
+            // 현재 쥐고 있는 날것의 각도를 새로운 기준점(0도)으로 설정
+            betaOffset = rawBeta;
+            targetRotateZ = 0; // 즉시 수직으로 리셋
         });
 
         startBtn.addEventListener('click', async () => {
@@ -245,45 +255,58 @@
             }
         });
 
+        // -180 ~ 180 사이의 각도로 정규화하는 함수 (360도 경계선 회전 오차 해결)
+        function normalizeAngle(angle) {
+            let a = angle % 360;
+            if (a > 180) a -= 360;
+            if (a < -180) a += 360;
+            return a;
+        }
+
         function initSensors() {
             overlay.style.display = 'none';
 
-            // X축 기울기(Beta)로 와이퍼(Z축) 회전 타겟 설정
             window.addEventListener('deviceorientation', (event) => {
                 if (event.beta === null) return;
                 
-                // 기기를 앞뒤(Beta)로 기울이면 원기둥이 좌우(Z축)로 흔들리도록 매핑
-                // 기울기 범위를 시각적으로 자연스럽게 증폭/제한
-                targetRotateZ = event.beta * 1.5; 
-                valBeta.innerText = event.beta.toFixed(1);
+                let currentBeta = event.beta;
+                
+                // 1. 스파이크 필터 (값이 순간적으로 튀는 현상 방지)
+                // 단 1프레임(약 16ms)만에 50도 이상 튀는 물리적으로 불가능한 움직임은 센서 노이즈로 간주하고 무시
+                let diff = normalizeAngle(currentBeta - rawBeta);
+                if (Math.abs(diff) > 50 && rawBeta !== 0) {
+                    currentBeta = rawBeta; // 이전 정상 값으로 복구
+                }
+                rawBeta = currentBeta;
+
+                // 2. 영점(Offset) 적용
+                // 현재 기기의 각도에서 내가 설정한 영점을 빼줍니다.
+                let adjustedBeta = normalizeAngle(rawBeta - betaOffset);
+                
+                targetRotateZ = adjustedBeta * 1.5; 
+                valBetaDisplay.innerText = adjustedBeta.toFixed(1);
             });
 
-            // Y축 회전속도(Gamma)로 공격 유지 감지
+            // 공격 로직 (이전과 동일)
             window.addEventListener('devicemotion', (event) => {
                 if (!event.rotationRate || event.rotationRate.gamma === null) return;
                 
                 const gammaRate = event.rotationRate.gamma;
-                valGamma.innerText = gammaRate.toFixed(1);
 
                 if (isCooldown) return;
 
-                // 속도가 임계값을 넘었을 때 (조건 만족)
                 if (Math.abs(gammaRate) > attackThreshold) {
                     if (!isHolding) {
-                        // 처음 임계값을 넘은 순간 시간 기록
                         isHolding = true;
                         holdStartTime = Date.now();
-                        document.body.classList.add('charging'); // 시각적 피드백
+                        document.body.classList.add('charging'); 
                     } else {
-                        // 계속 유지 중일 때 흐른 시간 체크
                         const elapsedTime = Date.now() - holdStartTime;
-                        
                         if (elapsedTime >= requiredHoldTime) {
                             triggerAttack();
                         }
                     }
                 } else {
-                    // 임계값 아래로 떨어지면 유지 상태 초기화 (충전 실패)
                     if (isHolding) {
                         isHolding = false;
                         document.body.classList.remove('charging');
@@ -302,8 +325,6 @@
         function animate() {
             // 부드러운 와이퍼 움직임 적용
             currentRotateZ = lerp(currentRotateZ, targetRotateZ, 0.15);
-            
-            // 하단 기준(transform-origin: bottom)으로 좌우 흔들림(rotateZ)
             cylinder.style.transform = `rotateZ(${currentRotateZ}deg)`;
             
             requestAnimationFrame(animate);
@@ -318,13 +339,11 @@
             document.body.classList.add('attack');
             attackMsg.classList.add('show');
 
-            // 공격 이펙트 유지 (0.15초)
             setTimeout(() => {
                 document.body.classList.remove('attack');
                 attackMsg.classList.remove('show');
             }, 150);
 
-            // 쿨타임 해제 (0.5초)
             setTimeout(() => {
                 isCooldown = false;
             }, 500);

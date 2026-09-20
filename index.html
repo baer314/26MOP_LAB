@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>수직 원기둥 & 공격 센서</title>
+    <title>와이퍼 원기둥 & 공격 센서</title>
     <style>
         body {
             margin: 0;
@@ -24,13 +24,18 @@
             background-color: #ff0000;
         }
 
+        /* 유지 중일 때의 시각적 피드백 (노란색) */
+        body.charging {
+            background-color: #4a4a00;
+        }
+
         #ui-layer {
             position: absolute;
             top: 20px;
             width: 90%;
             max-width: 400px;
             z-index: 10;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.6);
             padding: 15px;
             border-radius: 10px;
             box-sizing: border-box;
@@ -44,7 +49,7 @@
 
         input[type="range"] {
             width: 100%;
-            margin-top: 10px;
+            margin-top: 5px;
         }
 
         .data-row {
@@ -52,14 +57,15 @@
             justify-content: space-between;
             font-family: monospace;
             font-size: 14px;
+            margin-top: 10px;
         }
 
-        /* 3D 원기둥 씬 설정 */
+        /* 3D 씬 설정 */
         #scene {
             perspective: 800px;
             width: 200px;
             height: 300px;
-            margin-top: 150px;
+            margin-top: 200px;
             position: relative;
         }
 
@@ -68,8 +74,9 @@
             height: 100%;
             position: absolute;
             transform-style: preserve-3d;
-            /* Y축을 기준으로 회전 */
-            transform: rotateY(0deg); 
+            /* 와이퍼처럼 하단을 기준으로 움직이도록 축 변경 */
+            transform-origin: 50% 100%; 
+            transform: rotateZ(0deg); 
         }
 
         /* 원기둥의 각 면 (8각 기둥) */
@@ -91,7 +98,7 @@
             opacity: 0.9;
         }
 
-        /* 수학: 면 너비 80px, 반지름(Z거리) 약 96px */
+        /* 원기둥 형태를 잡기 위한 3D 회전 */
         .face:nth-child(1) { transform: rotateY(0deg) translateZ(96px); }
         .face:nth-child(2) { transform: rotateY(45deg) translateZ(96px); }
         .face:nth-child(3) { transform: rotateY(90deg) translateZ(96px); }
@@ -146,26 +153,29 @@
 </head>
 <body>
 
-    <!-- iOS 권한 요청 및 시작 화면 -->
     <div id="permission-overlay">
         <h2>센서 테스트</h2>
         <p>기기를 세로로 들고 시작해주세요.</p>
         <button id="start-btn">센서 권한 허용 및 시작</button>
     </div>
 
-    <!-- 설정 및 데이터 UI -->
+    <!-- 설정 UI -->
     <div id="ui-layer">
         <div class="slider-container">
-            <label for="deadzone-slider">공격 데드존 (Gamma 회전 속도): <span id="deadzone-val">300</span></label>
+            <label>공격 민감도 (Gamma 속도): <span id="deadzone-val">300</span></label>
             <input type="range" id="deadzone-slider" min="50" max="1000" value="300" step="10">
         </div>
+        <div class="slider-container">
+            <label>요구 유지 시간 (ms): <span id="duration-val">150</span>ms</label>
+            <input type="range" id="duration-slider" min="0" max="1000" value="150" step="10">
+        </div>
         <div class="data-row">
-            <span>X 기울기(Beta): <span id="val-beta">0</span>°</span>
-            <span>Y 회전속도(Gamma): <span id="val-gamma">0</span></span>
+            <span>X 기울기: <span id="val-beta">0</span>°</span>
+            <span>Y 회전속도: <span id="val-gamma">0</span></span>
         </div>
     </div>
 
-    <!-- 3D 원기둥 영역 -->
+    <!-- 3D 씬 -->
     <div id="scene">
         <div id="cylinder">
             <div class="face">1</div>
@@ -179,7 +189,6 @@
         </div>
     </div>
 
-    <!-- 공격 이펙트 -->
     <div id="attack-msg">ATTACK!</div>
 
     <script>
@@ -190,24 +199,35 @@
         
         const deadzoneSlider = document.getElementById('deadzone-slider');
         const deadzoneValDisplay = document.getElementById('deadzone-val');
+        const durationSlider = document.getElementById('duration-slider');
+        const durationValDisplay = document.getElementById('duration-val');
+        
         const valBeta = document.getElementById('val-beta');
         const valGamma = document.getElementById('val-gamma');
 
-        // 변수 설정
-        let attackThreshold = 300; // 공격 데드존 기본값
-        let isCooldown = false; // 공격 쿨타임 상태
+        // 상태 변수
+        let attackThreshold = 300; 
+        let requiredHoldTime = 150; // ms 단위로 공격을 유지해야 하는 시간
         
-        // 회전 관련 변수 (LERP용)
-        let targetRotateY = 0;
-        let currentRotateY = 0;
+        let isCooldown = false; 
+        let isHolding = false;
+        let holdStartTime = 0;
 
-        // 1. 슬라이더 이벤트 (데드존 조절)
+        // 회전 관련 변수 (LERP용)
+        let targetRotateZ = 0;
+        let currentRotateZ = 0;
+
+        // 슬라이더 이벤트
         deadzoneSlider.addEventListener('input', (e) => {
             attackThreshold = parseInt(e.target.value);
             deadzoneValDisplay.innerText = attackThreshold;
         });
 
-        // 2. 시작 버튼 (권한 요청)
+        durationSlider.addEventListener('input', (e) => {
+            requiredHoldTime = parseInt(e.target.value);
+            durationValDisplay.innerText = requiredHoldTime;
+        });
+
         startBtn.addEventListener('click', async () => {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
@@ -221,7 +241,6 @@
                     console.error(error);
                 }
             } else {
-                // 안드로이드 등 권한이 필요 없는 기기
                 initSensors();
             }
         });
@@ -229,63 +248,83 @@
         function initSensors() {
             overlay.style.display = 'none';
 
-            // X축 기울기(Beta)로 원기둥 회전 타겟 설정
+            // X축 기울기(Beta)로 와이퍼(Z축) 회전 타겟 설정
             window.addEventListener('deviceorientation', (event) => {
                 if (event.beta === null) return;
                 
-                // 폰을 앞뒤로 기울이는 X축 값(Beta: -180 ~ 180)을 
-                // 원기둥의 좌우 회전(Y축)에 매핑 (배율을 2배로 하여 잘 돌아가게 함)
-                targetRotateY = event.beta * 2;
+                // 기기를 앞뒤(Beta)로 기울이면 원기둥이 좌우(Z축)로 흔들리도록 매핑
+                // 기울기 범위를 시각적으로 자연스럽게 증폭/제한
+                targetRotateZ = event.beta * 1.5; 
                 valBeta.innerText = event.beta.toFixed(1);
             });
 
-            // Y축 회전속도(Gamma)로 공격 감지
+            // Y축 회전속도(Gamma)로 공격 유지 감지
             window.addEventListener('devicemotion', (event) => {
                 if (!event.rotationRate || event.rotationRate.gamma === null) return;
                 
                 const gammaRate = event.rotationRate.gamma;
                 valGamma.innerText = gammaRate.toFixed(1);
 
-                // 설정된 데드존(Threshold) 이상으로 폰을 비틀었을 때
-                if (Math.abs(gammaRate) > attackThreshold && !isCooldown) {
-                    triggerAttack();
+                if (isCooldown) return;
+
+                // 속도가 임계값을 넘었을 때 (조건 만족)
+                if (Math.abs(gammaRate) > attackThreshold) {
+                    if (!isHolding) {
+                        // 처음 임계값을 넘은 순간 시간 기록
+                        isHolding = true;
+                        holdStartTime = Date.now();
+                        document.body.classList.add('charging'); // 시각적 피드백
+                    } else {
+                        // 계속 유지 중일 때 흐른 시간 체크
+                        const elapsedTime = Date.now() - holdStartTime;
+                        
+                        if (elapsedTime >= requiredHoldTime) {
+                            triggerAttack();
+                        }
+                    }
+                } else {
+                    // 임계값 아래로 떨어지면 유지 상태 초기화 (충전 실패)
+                    if (isHolding) {
+                        isHolding = false;
+                        document.body.classList.remove('charging');
+                    }
                 }
             });
 
-            // 렌더링 루프 시작
             requestAnimationFrame(animate);
         }
 
-        // 3. 부드러운 회전을 위한 LERP 함수 및 애니메이션 루프
+        // LERP 보간 및 렌더링
         function lerp(start, end, amt) {
             return (1 - amt) * start + amt * end;
         }
 
         function animate() {
-            // 현재 회전값을 목표 회전값으로 10%씩 부드럽게 이동
-            currentRotateY = lerp(currentRotateY, targetRotateY, 0.1);
+            // 부드러운 와이퍼 움직임 적용
+            currentRotateZ = lerp(currentRotateZ, targetRotateZ, 0.15);
             
-            // 원기둥에 CSS 적용 (세로 원기둥이므로 rotateY 적용)
-            cylinder.style.transform = `rotateY(${currentRotateY}deg)`;
+            // 하단 기준(transform-origin: bottom)으로 좌우 흔들림(rotateZ)
+            cylinder.style.transform = `rotateZ(${currentRotateZ}deg)`;
             
             requestAnimationFrame(animate);
         }
 
-        // 4. 공격 발동 로직
+        // 공격 발동
         function triggerAttack() {
             isCooldown = true;
+            isHolding = false;
             
-            // 화면 번쩍임 및 텍스트 표시
+            document.body.classList.remove('charging');
             document.body.classList.add('attack');
             attackMsg.classList.add('show');
 
-            // 이펙트 끄기 (0.15초 후)
+            // 공격 이펙트 유지 (0.15초)
             setTimeout(() => {
                 document.body.classList.remove('attack');
                 attackMsg.classList.remove('show');
             }, 150);
 
-            // 쿨타임 해제 (0.5초 후)
+            // 쿨타임 해제 (0.5초)
             setTimeout(() => {
                 isCooldown = false;
             }, 500);

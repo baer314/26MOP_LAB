@@ -198,8 +198,8 @@
             smoothedZ = smoothedZ * filterFactor + calibratedZ * (1 - filterFactor); // Z축 필터
 
             // 2D 포인터 이동 로직 (X, Y만 사용)
-            let pointerX = centerX - (smoothedX * sensitivity);
-            let pointerY = centerY + (smoothedY * sensitivity);
+            let pointerX = centerZ - (smoothedZ * sensitivity);
+            let pointerY = centerY - (smoothedY * sensitivity);
 
             pointerX = Math.max(10, Math.min(window.innerWidth - 10, pointerX));
             pointerY = Math.max(10, Math.min(window.innerHeight - 10, pointerY));

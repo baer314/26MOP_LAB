@@ -3,59 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>커스텀 에어 마우스 (원형 제한)</title>
+    <title>Z축 가속도 커서</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
+        /* 기본 터치 동작 및 선택 방지 */
         body {
-            background-color: #121212;
-            color: white;
-            overflow: hidden;
-            touch-action: none;
-            font-family: 'Inter', sans-serif;
+            touch-action: pan-y;
+            -webkit-user-select: none;
+            user-select: none;
         }
         
-        /* 이동 반경 제한 가이드라인 (원형) */
-        #boundary-circle {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            border: 2px dashed rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            pointer-events: none;
-            z-index: 10;
-        }
-
-        /* 조준선 커서 디자인 */
+        /* 커서의 부드러운 움직임을 위한 트랜지션 (렌더링 루프가 처리하므로 제외할 수도 있으나 보정용으로 짧게 줌) */
         #cursor {
-            position: absolute;
-            width: 40px;
-            height: 40px;
-            border: 2px solid #00ff00;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
-            z-index: 50;
             transition: transform 0.05s linear;
         }
-        
-        #cursor::before, #cursor::after {
-            content: '';
-            position: absolute;
-            background-color: #00ff00;
-        }
-        
-        #cursor::before { top: 50%; left: -10px; right: -10px; height: 2px; transform: translateY(-50%); }
-        #cursor::after { left: 50%; top: -10px; bottom: -10px; width: 2px; transform: translateX(-50%); }
 
-        .btn-press:active {
-            transform: scale(0.95);
-            filter: brightness(0.8);
-        }
-
-        /* 슬라이더 커스텀 디자인 */
+        /* 커스텀 슬라이더 스타일링 */
         input[type=range] {
             -webkit-appearance: none;
             width: 100%;
@@ -63,226 +26,198 @@
         }
         input[type=range]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            height: 16px;
-            width: 16px;
+            height: 24px;
+            width: 24px;
             border-radius: 50%;
-            background: #4ade80;
+            background: #3b82f6;
             cursor: pointer;
-            margin-top: -6px;
+            margin-top: -8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         input[type=range]::-webkit-slider-runnable-track {
             width: 100%;
-            height: 4px;
+            height: 8px;
             cursor: pointer;
-            background: #4b5563;
-            border-radius: 2px;
+            background: #e5e7eb;
+            border-radius: 4px;
         }
     </style>
 </head>
-<body class="w-screen h-screen flex flex-col items-center justify-center relative">
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col items-center p-4">
 
-    <!-- 이동 반경 가이드라인 -->
-    <div id="boundary-circle"></div>
+    <div class="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 mt-4 flex flex-col gap-6">
+        
+        <div class="text-center">
+            <h1 class="text-2xl font-bold text-gray-900">Z축 가속도 커서</h1>
+            <p class="text-sm text-gray-500 mt-1">기기를 앞뒤로 밀거나 당겨보세요</p>
+        </div>
 
-    <!-- 조준선 커서 -->
-    <div id="cursor" style="left: 50%; top: 50%;"></div>
+        <!-- 에러/안내 메시지 표시 영역 -->
+        <div id="messageBox" class="hidden rounded-lg p-4 text-sm font-medium"></div>
 
-    <!-- 시작 오버레이 -->
-    <div id="start-screen" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-40 backdrop-blur-sm">
-        <h1 class="text-3xl font-bold text-green-400 mb-4"><i class="fa-solid fa-gamepad"></i> 포인터 마우스</h1>
-        <p class="text-gray-300 text-center mb-8 text-sm px-6 leading-relaxed">
-            기기를 권총처럼 쥐어주세요.<br>
-            <span class="text-white font-bold">(핸드폰 윗면 = 앞쪽 / 볼륨키 = 위쪽)</span><br>
-        </p>
-        <button id="btn-start" class="btn-press bg-green-500 text-black font-bold text-xl py-4 px-10 rounded-full shadow-[0_0_20px_rgba(0,255,0,0.4)]">
-            시작하기 (권한 요청)
+        <!-- 시작 버튼 (센서 권한 요청용) -->
+        <button id="startBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-md active:scale-95 transition-transform duration-150">
+            센서 시작 및 권한 허용
         </button>
-    </div>
 
-    <!-- 설정 패널 -->
-    <div class="absolute top-4 left-4 right-4 bg-gray-900/80 border border-gray-700 rounded-xl p-4 z-30 backdrop-blur-md shadow-lg flex flex-col gap-4">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="flex flex-col">
-                <div class="flex justify-between mb-1">
-                    <label class="text-xs text-gray-400">마우스 감도 (Sensitivity)</label>
-                    <span id="val-sens" class="text-xs text-green-400 font-bold">20.0</span>
-                </div>
-                <input type="range" id="slider-sens" min="5" max="50" step="1" value="20">
+        <!-- 센서 데이터 및 데드존 표시 -->
+        <div class="bg-gray-100 rounded-xl p-4 flex flex-col gap-2 shadow-inner text-sm">
+            <div class="flex justify-between">
+                <span class="font-semibold text-gray-600">현재 Z축 가속도:</span>
+                <span id="zValueDisplay" class="font-mono text-blue-600 font-bold">0.00</span>
             </div>
-
-            <div class="flex flex-col">
-                <div class="flex justify-between mb-1">
-                    <label class="text-xs text-gray-400">데드존 (떨림 방지)</label>
-                    <span id="val-dead" class="text-xs text-green-400 font-bold">0.8</span>
-                </div>
-                <input type="range" id="slider-dead" min="0" max="3" step="0.1" value="0.8">
+            <div class="flex justify-between">
+                <span class="font-semibold text-gray-600">현재 데드존 설정값:</span>
+                <span id="deadzoneDisplay" class="font-mono text-red-500 font-bold">0.50</span>
             </div>
         </div>
 
-        <div class="flex justify-between items-center border-t border-gray-700 pt-3">
-            <div class="text-[10px] text-gray-500">방향이 거꾸로 움직인다면 체크하세요.</div>
-            <div class="flex gap-4">
-                <label class="flex items-center gap-1 text-xs cursor-pointer">
-                    <input type="checkbox" id="chk-invert-x" class="accent-green-500"> 좌우 반전
-                </label>
-                <label class="flex items-center gap-1 text-xs cursor-pointer">
-                    <input type="checkbox" id="chk-invert-y" class="accent-green-500"> 상하 반전
-                </label>
+        <!-- 데드존 슬라이더 -->
+        <div class="flex flex-col gap-2">
+            <label for="deadzoneSlider" class="text-sm font-semibold text-gray-700">데드존 조절 (0.0 ~ 3.0)</label>
+            <input type="range" id="deadzoneSlider" min="0" max="3" step="0.1" value="0.5">
+        </div>
+
+        <!-- 커서 트랙 및 커서 -->
+        <div class="flex flex-col gap-2 mt-4">
+            <span class="text-sm font-semibold text-gray-700">이동 영역</span>
+            <div id="track" class="w-full h-24 bg-gray-200 rounded-xl shadow-inner relative overflow-hidden flex items-center border border-gray-300">
+                <!-- 커서 (빨간 공) -->
+                <div id="cursor" class="w-10 h-10 bg-red-500 rounded-full shadow-md absolute left-0 flex items-center justify-center border-2 border-white">
+                    <div class="w-3 h-3 bg-white rounded-full opacity-60"></div>
+                </div>
+            </div>
+            <div class="flex justify-between text-xs text-gray-400 px-1 mt-1">
+                <span>◀ 왼쪽 이동 (-)</span>
+                <span>오른쪽 이동 (+) ▶</span>
             </div>
         </div>
-    </div>
 
-    <!-- 하단 조작 버튼 -->
-    <div class="absolute bottom-10 left-0 right-0 flex justify-center gap-6 z-30">
-        <button id="btn-recenter" class="btn-press bg-gray-800 border-2 border-gray-600 text-white rounded-full w-20 h-20 flex flex-col items-center justify-center shadow-lg">
-            <i class="fa-solid fa-crosshairs text-2xl mb-1 text-blue-400"></i>
-            <span class="text-[10px]">영점 리셋</span>
-        </button>
     </div>
 
     <script>
+        // DOM 요소 참조
+        const startBtn = document.getElementById('startBtn');
+        const messageBox = document.getElementById('messageBox');
+        const zValueDisplay = document.getElementById('zValueDisplay');
+        const deadzoneDisplay = document.getElementById('deadzoneDisplay');
+        const deadzoneSlider = document.getElementById('deadzoneSlider');
+        const track = document.getElementById('track');
         const cursor = document.getElementById('cursor');
-        const boundaryCircle = document.getElementById('boundary-circle');
-        const btnStart = document.getElementById('btn-start');
-        const startScreen = document.getElementById('start-screen');
-        const btnRecenter = document.getElementById('btn-recenter');
-        
-        const sliderSens = document.getElementById('slider-sens');
-        const sliderDead = document.getElementById('slider-dead');
-        const valSens = document.getElementById('val-sens');
-        const valDead = document.getElementById('val-dead');
-        const chkInvertX = document.getElementById('chk-invert-x');
-        const chkInvertY = document.getElementById('chk-invert-y');
 
-        let SENSITIVITY = parseFloat(sliderSens.value);
-        let DEADZONE = parseFloat(sliderDead.value);
+        // 상태 변수
+        let isRunning = false;
+        let currentZ = 0;
+        let deadzone = parseFloat(deadzoneSlider.value);
+        let cursorX = 0; // 초기 위치는 나중에 컨테이너 크기에 맞춰 중앙으로 이동
         
-        let screenW = window.innerWidth;
-        let screenH = window.innerHeight;
-        let maxRadius = 0; // 원형 제한의 최대 반지름
-        
-        let cursorX = screenW / 2;
-        let cursorY = screenH / 2;
-        let lastTime = 0;
+        // 이동 민감도 (픽셀 단위 변환 계수)
+        const sensitivity = 5.0;
 
-        // 화면 크기가 바뀔 때마다 중심점과 최대 반지름 업데이트
-        function updateBounds() {
-            screenW = window.innerWidth;
-            screenH = window.innerHeight;
-            
-            // 화면의 가로, 세로 중 더 짧은 길이를 구하고 반으로 나누어 반지름 설정
-            // 커서 크기(40px)가 잘리지 않도록 20px 정도 여백을 뺌
-            maxRadius = (Math.min(screenW, screenH) / 2) - 20; 
-            
-            // 시각적 가이드라인 크기 설정 (지름 = 반지름 * 2)
-            boundaryCircle.style.width = `${maxRadius * 2}px`;
-            boundaryCircle.style.height = `${maxRadius * 2}px`;
+        // 메시지 표시 함수 (alert 대체)
+        function showMessage(text, type = 'error') {
+            messageBox.textContent = text;
+            messageBox.className = `rounded-lg p-4 text-sm font-medium mb-2 ${
+                type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+            }`;
+            messageBox.style.display = 'block';
         }
 
-        window.addEventListener('resize', updateBounds);
-        updateBounds(); // 초기 크기 설정
+        // 초기 화면 중앙 정렬
+        function initCursorPosition() {
+            const trackWidth = track.clientWidth;
+            const cursorWidth = cursor.clientWidth;
+            cursorX = (trackWidth - cursorWidth) / 2;
+            cursor.style.transform = `translateX(${cursorX}px)`;
+        }
+        
+        // 창 크기 변경 시 중앙으로 재배치
+        window.addEventListener('resize', initCursorPosition);
+        // DOM 로드 완료 시 초기화
+        document.addEventListener('DOMContentLoaded', initCursorPosition);
 
-        sliderSens.addEventListener('input', (e) => {
-            SENSITIVITY = parseFloat(e.target.value);
-            valSens.textContent = SENSITIVITY.toFixed(1);
+        // 데드존 슬라이더 이벤트
+        deadzoneSlider.addEventListener('input', (e) => {
+            deadzone = parseFloat(e.target.value);
+            deadzoneDisplay.textContent = deadzone.toFixed(2);
         });
 
-        sliderDead.addEventListener('input', (e) => {
-            DEADZONE = parseFloat(e.target.value);
-            valDead.textContent = DEADZONE.toFixed(1);
-        });
-
+        // 가속도 센서 이벤트 처리 함수
         function handleMotion(event) {
-            const rr = event.rotationRate;
-            if (!rr || rr.alpha === null) return;
+            // event.acceleration: 중력을 제외한 기기의 선형 가속도
+            if (!event.acceleration || event.acceleration.z === null) {
+                return;
+            }
 
-            const now = performance.now();
-            if (lastTime === 0) { lastTime = now; return; }
-            const dt = (now - lastTime) / 1000;
-            lastTime = now;
+            const z = event.acceleration.z;
+            currentZ = z;
+            zValueDisplay.textContent = z.toFixed(2);
 
-            let rawYawRate = rr.beta; 
-            let rawPitchRate = rr.alpha;
+            // 데드존을 초과하는 가속도에 대해서만 반응
+            if (Math.abs(z) > deadzone) {
+                // Z축이 양수면 오른쪽(증가), 음수면 왼쪽(감소)
+                // 데드존만큼 값을 빼주어 움직임이 부드럽게 시작되도록 함
+                let effectiveZ = z > 0 ? z - deadzone : z + deadzone;
+                let moveAmount = effectiveZ * sensitivity;
 
-            let yawRate = Math.abs(rawYawRate) < DEADZONE ? 0 : rawYawRate;
-            let pitchRate = Math.abs(rawPitchRate) < DEADZONE ? 0 : rawPitchRate;
+                cursorX += moveAmount;
 
-            const dirX = chkInvertX.checked ? -1 : 1;
-            const dirY = chkInvertY.checked ? 1 : -1;
+                // 트랙 경계 계산 (커서가 밖으로 나가지 않도록 Clamp)
+                const trackWidth = track.clientWidth;
+                const cursorWidth = cursor.clientWidth;
+                const maxCursorX = trackWidth - cursorWidth;
 
-            const dx = yawRate * dt * SENSITIVITY * dirX;
-            const dy = pitchRate * dt * SENSITIVITY * dirY;
-
-            // 이동할 좌표 1차 적용
-            cursorX += dx;
-            cursorY += dy;
-
-            // ⭐️ 원형 반경 제한 로직 (피타고라스 정리 사용) ⭐️
-            const centerX = screenW / 2;
-            const centerY = screenH / 2;
-            
-            // 중심점에서 커서까지의 X, Y 거리
-            const distX = cursorX - centerX;
-            const distY = cursorY - centerY;
-            
-            // 중심점에서 커서까지의 실제 직선 거리
-            const distance = Math.sqrt(distX * distX + distY * distY);
-
-            // 커서가 설정된 최대 반지름을 벗어났다면
-            if (distance > maxRadius) {
-                // 비율을 계산하여 반지름 경계선으로 커서 좌표를 끌어내림
-                const ratio = maxRadius / distance;
-                cursorX = centerX + (distX * ratio);
-                cursorY = centerY + (distY * ratio);
+                // 0과 maxCursorX 사이로 제한
+                if (cursorX < 0) cursorX = 0;
+                if (cursorX > maxCursorX) cursorX = maxCursorX;
             }
         }
 
-        function updateDisplay() {
-            cursor.style.left = `${cursorX}px`;
-            cursor.style.top = `${cursorY}px`;
-            requestAnimationFrame(updateDisplay);
+        // 렌더링 루프 (부드러운 UI 업데이트)
+        function renderLoop() {
+            if (isRunning) {
+                cursor.style.transform = `translateX(${cursorX}px)`;
+            }
+            requestAnimationFrame(renderLoop);
         }
 
-        btnRecenter.addEventListener('click', () => {
-            cursorX = screenW / 2;
-            cursorY = screenH / 2;
-            
-            cursor.style.transform = 'translate(-50%, -50%) scale(1.5)';
-            cursor.style.borderColor = 'white';
-            
-            // 가이드라인도 같이 깜빡임 효과
-            boundaryCircle.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-            
-            setTimeout(() => {
-                cursor.style.transform = 'translate(-50%, -50%) scale(1)';
-                cursor.style.borderColor = '#00ff00';
-                boundaryCircle.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-            }, 100);
-        });
+        // 센서 시작 버튼 클릭 이벤트
+        startBtn.addEventListener('click', async () => {
+            if (isRunning) return;
 
-        btnStart.addEventListener('click', async () => {
+            // iOS 13+ 기기 권한 요청 로직
             if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
                 try {
-                    const permission = await DeviceMotionEvent.requestPermission();
-                    if (permission === 'granted') {
-                        initSensors();
+                    const permissionState = await DeviceMotionEvent.requestPermission();
+                    if (permissionState === 'granted') {
+                        startSensor();
+                        showMessage('센서 접근이 허용되었습니다.', 'success');
                     } else {
-                        alert("센서 권한이 거부되었습니다.");
+                        showMessage('센서 접근 권한이 거부되었습니다.');
                     }
-                } catch (e) {
-                    console.error(e);
+                } catch (error) {
+                    console.error(error);
+                    showMessage('권한 요청 중 오류가 발생했습니다.');
                 }
             } else {
-                initSensors();
+                // 권한 요청이 필요 없는 브라우저 (안드로이드 크롬 등)
+                startSensor();
+                showMessage('센서가 시작되었습니다.', 'success');
             }
         });
 
-        function initSensors() {
-            startScreen.style.display = 'none';
-            lastTime = performance.now();
+        function startSensor() {
             window.addEventListener('devicemotion', handleMotion);
-            updateDisplay();
+            isRunning = true;
+            startBtn.textContent = '작동 중...';
+            startBtn.classList.replace('bg-blue-600', 'bg-green-600');
+            startBtn.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
+            startBtn.disabled = true;
+            
+            // 애니메이션 루프 시작
+            requestAnimationFrame(renderLoop);
         }
+
     </script>
 </body>
 </html>

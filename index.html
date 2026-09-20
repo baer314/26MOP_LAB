@@ -3,298 +3,293 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>갤럭시 센서 대시보드</title>
+    <title>Air Mouse Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
     <style>
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: #121212;
-            color: #e0e0e0;
-            overscroll-behavior-y: none;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #0f172a; /* Slate 900 */
+            color: #f8fafc;
+            /* Prevent mobile pull-to-refresh and scrolling */
+            overscroll-behavior: none;
+            touch-action: none; 
+            margin: 0;
+            overflow: hidden;
         }
-        .sensor-card {
-            background: linear-gradient(145deg, #1e1e1e, #2a2a2a);
-            border: 1px solid #333;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-            transition: transform 0.1s ease-out;
+
+        #cursor {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 24px;
+            height: 24px;
+            background-color: #ef4444; /* Tailwind red-500 */
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.8), 0 0 5px rgba(255, 255, 255, 0.5);
+            /* Center the cursor element on its coordinates */
+            transform: translate(-50%, -50%);
+            pointer-events: none; /* Let clicks pass through */
+            z-index: 50;
+            will-change: transform;
         }
-        .value-box {
-            background-color: #1a1a1a;
-            border-radius: 0.5rem;
-            padding: 0.75rem;
-            text-align: center;
-            border: 1px solid #2d2d2d;
+
+        .panel-blur {
+            background: rgba(30, 41, 59, 0.7); /* Slate 800 with opacity */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .value-label {
-            font-size: 0.75rem;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.25rem;
+
+        /* Custom range slider styling */
+        input[type=range] {
+            accent-color: #3b82f6; /* Blue 500 */
         }
-        .value-data {
-            font-size: 1.25rem;
-            font-weight: 600;
-            font-variant-numeric: tabular-nums;
-            color: #4ade80; /* Tailwind green-400 */
-        }
-        .axis-x { color: #f87171; } /* red */
-        .axis-y { color: #60a5fa; } /* blue */
-        .axis-z { color: #4ade80; } /* green */
     </style>
 </head>
-<body class="min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col items-center">
+<body class="w-screen h-screen relative flex flex-col justify-end">
 
-    <header class="w-full max-w-3xl mb-6 text-center">
-        <h1 class="text-2xl font-bold mb-2 flex items-center justify-center gap-2">
-            <i class="fa-solid fa-mobile-screen-button text-blue-400"></i>
-            모바일 센서 대시보드
-        </h1>
-        <p class="text-sm text-gray-400">회전, 가속도, 기기 방향 실시간 데이터</p>
-    </header>
+    <!-- The Virtual Cursor -->
+    <div id="cursor" style="display: none;"></div>
 
-    <div id="permission-container" class="w-full max-w-3xl mb-6 hidden">
-        <div class="bg-blue-900/30 border border-blue-800 text-blue-200 p-4 rounded-xl text-center">
-            <p class="mb-3 text-sm">센서 데이터에 접근하려면 권한이 필요할 수 있습니다.</p>
-            <button id="btn-request-permission" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-6 rounded-lg transition-colors shadow-lg">
-                센서 접근 권한 요청
+    <!-- Start / Calibration Overlay -->
+    <div id="overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/90 backdrop-blur-sm px-4">
+        <div class="panel-blur p-8 rounded-2xl max-w-sm w-full text-center shadow-2xl">
+            <i class="fa-solid fa-satellite-dish text-5xl text-blue-400 mb-4 animate-pulse"></i>
+            <h1 class="text-2xl font-bold mb-2">가상 에어 마우스</h1>
+            <p class="text-sm text-slate-400 mb-6">
+                기기를 평행하게 들고 시작 버튼을 누르면 현재 위치가 화면의 중앙(0,0)으로 영점 조절됩니다.
+            </p>
+            <button id="btn-start" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-[0_0_15px_rgba(37,99,235,0.5)] active:scale-95">
+                <i class="fa-solid fa-crosshairs mr-2"></i> 시작 및 영점 조절
             </button>
+            <div id="perm-msg" class="mt-4 text-xs text-red-400 hidden">
+                권한 요청이 거부되었습니다. 다시 시도해주세요.
+            </div>
         </div>
     </div>
 
-    <main class="w-full max-w-3xl grid grid-cols-1 md:grid-cols-2 gap-4 pb-12">
+    <!-- Control Panel (Bottom) -->
+    <div class="panel-blur m-4 p-4 rounded-xl z-40">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-sm font-bold text-slate-200"><i class="fa-solid fa-sliders mr-2"></i>제어판</h2>
+            <button id="btn-recalibrate" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition-colors">
+                <i class="fa-solid fa-rotate-right mr-1"></i> 재정렬
+            </button>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Sensibility Control -->
+            <div class="flex flex-col">
+                <label class="text-xs text-slate-400 mb-1 flex justify-between">
+                    <span>민감도 (Sensitivity)</span>
+                    <span id="lbl-sens">15 px/deg</span>
+                </label>
+                <input type="range" id="slider-sens" min="5" max="40" step="1" value="15" class="w-full">
+            </div>
 
-        <!-- 기기 방향 (Orientation) -->
-        <section class="sensor-card rounded-xl p-5">
-            <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
-                <i class="fa-solid fa-compass text-yellow-400"></i>
-                <h2 class="text-lg font-semibold">기기 방향 (Orientation)</h2>
+            <!-- Filter Strength (LPF) Control -->
+            <div class="flex flex-col">
+                <label class="text-xs text-slate-400 mb-1 flex justify-between">
+                    <span>보정 강도 (Smoothing)</span>
+                    <span id="lbl-filter">0.10 (부드러움)</span>
+                </label>
+                <input type="range" id="slider-filter" min="0.01" max="1.0" step="0.01" value="0.1" class="w-full">
             </div>
-            <div class="grid grid-cols-3 gap-2">
-                <div class="value-box">
-                    <div class="value-label">Alpha (Z)</div>
-                    <div class="value-data axis-z" id="ori-alpha">0.00°</div>
-                </div>
-                <div class="value-box">
-                    <div class="value-label">Beta (X)</div>
-                    <div class="value-data axis-x" id="ori-beta">0.00°</div>
-                </div>
-                <div class="value-box">
-                    <div class="value-label">Gamma (Y)</div>
-                    <div class="value-data axis-y" id="ori-gamma">0.00°</div>
-                </div>
-            </div>
-            <p class="text-xs text-gray-500 mt-3 text-center">나침반 방향 및 기기 기울기</p>
-        </section>
+        </div>
 
-        <!-- 회전 속도 (Rotation Rate) -->
-        <section class="sensor-card rounded-xl p-5">
-            <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
-                <i class="fa-solid fa-rotate text-purple-400"></i>
-                <h2 class="text-lg font-semibold">회전 속도 (Rotation Rate)</h2>
+        <!-- Debug Info -->
+        <div class="mt-4 grid grid-cols-2 gap-2 text-[10px] sm:text-xs font-mono text-slate-400 bg-slate-900/50 p-2 rounded-lg border border-slate-700/50">
+            <div>
+                <span class="text-blue-400">RAW A:</span> <span id="debug-raw-a">0.0</span>°<br>
+                <span class="text-green-400">RAW B:</span> <span id="debug-raw-b">0.0</span>°
             </div>
-            <div class="grid grid-cols-3 gap-2">
-                <div class="value-box">
-                    <div class="value-label">Alpha</div>
-                    <div class="value-data axis-z" id="rot-alpha">0.00</div>
-                </div>
-                <div class="value-box">
-                    <div class="value-label">Beta</div>
-                    <div class="value-data axis-x" id="rot-beta">0.00</div>
-                </div>
-                <div class="value-box">
-                    <div class="value-label">Gamma</div>
-                    <div class="value-data axis-y" id="rot-gamma">0.00</div>
-                </div>
+            <div>
+                <span class="text-red-400">SMOOTH X:</span> <span id="debug-smooth-x">0</span>px<br>
+                <span class="text-yellow-400">SMOOTH Y:</span> <span id="debug-smooth-y">0</span>px
             </div>
-            <p class="text-xs text-gray-500 mt-3 text-center">각 축을 중심으로 한 회전 속도 (deg/s)</p>
-        </section>
-
-        <!-- 가속도 (Acceleration - 중력 제외) -->
-        <section class="sensor-card rounded-xl p-5">
-            <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
-                <i class="fa-solid fa-rocket text-red-400"></i>
-                <h2 class="text-lg font-semibold">가속도 (순수 이동)</h2>
-            </div>
-            <div class="grid grid-cols-3 gap-2">
-                <div class="value-box">
-                    <div class="value-label">X 축</div>
-                    <div class="value-data axis-x" id="acc-x">0.00</div>
-                </div>
-                <div class="value-box">
-                    <div class="value-label">Y 축</div>
-                    <div class="value-data axis-y" id="acc-y">0.00</div>
-                </div>
-                <div class="value-box">
-                    <div class="value-label">Z 축</div>
-                    <div class="value-data axis-z" id="acc-z">0.00</div>
-                </div>
-            </div>
-            <p class="text-xs text-gray-500 mt-3 text-center">중력을 제외한 순수 가속도 (m/s²)</p>
-        </section>
-
-        <!-- 가속도 (Acceleration - 중력 포함) -->
-        <section class="sensor-card rounded-xl p-5">
-            <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
-                <i class="fa-solid fa-weight-hanging text-orange-400"></i>
-                <h2 class="text-lg font-semibold">가속도 (중력 포함)</h2>
-            </div>
-            <div class="grid grid-cols-3 gap-2">
-                <div class="value-box">
-                    <div class="value-label">X 축</div>
-                    <div class="value-data axis-x" id="acc-grav-x">0.00</div>
-                </div>
-                <div class="value-box">
-                    <div class="value-label">Y 축</div>
-                    <div class="value-data axis-y" id="acc-grav-y">0.00</div>
-                </div>
-                <div class="value-box">
-                    <div class="value-label">Z 축</div>
-                    <div class="value-data axis-z" id="acc-grav-z">0.00</div>
-                </div>
-            </div>
-            <p class="text-xs text-gray-500 mt-3 text-center">기기가 받는 전체 가속도 (m/s²)</p>
-        </section>
-
-        <!-- 화면 방향 (Screen Orientation) -->
-        <section class="sensor-card rounded-xl p-5 md:col-span-2">
-            <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
-                <i class="fa-solid fa-tablet-screen-button text-cyan-400"></i>
-                <h2 class="text-lg font-semibold">화면 방향 (Screen API)</h2>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div class="value-box">
-                    <div class="value-label">현재 각도 (Angle)</div>
-                    <div class="value-data text-cyan-400 text-2xl" id="screen-angle">0°</div>
-                </div>
-                <div class="value-box">
-                    <div class="value-label">방향 타입 (Type)</div>
-                    <div class="value-data text-cyan-400 text-lg sm:text-xl truncate px-2" id="screen-type">portrait-primary</div>
-                </div>
-            </div>
-            <p class="text-xs text-gray-500 mt-3 text-center">기기를 가로/세로로 돌릴 때 변하는 값</p>
-        </section>
-
-    </main>
+        </div>
+    </div>
 
     <script>
         // DOM Elements
-        const els = {
-            oriAlpha: document.getElementById('ori-alpha'),
-            oriBeta: document.getElementById('ori-beta'),
-            oriGamma: document.getElementById('ori-gamma'),
-            rotAlpha: document.getElementById('rot-alpha'),
-            rotBeta: document.getElementById('rot-beta'),
-            rotGamma: document.getElementById('rot-gamma'),
-            accX: document.getElementById('acc-x'),
-            accY: document.getElementById('acc-y'),
-            accZ: document.getElementById('acc-z'),
-            accGravX: document.getElementById('acc-grav-x'),
-            accGravY: document.getElementById('acc-grav-y'),
-            accGravZ: document.getElementById('acc-grav-z'),
-            screenAngle: document.getElementById('screen-angle'),
-            screenType: document.getElementById('screen-type'),
-            permContainer: document.getElementById('permission-container'),
-            btnPerm: document.getElementById('btn-request-permission')
-        };
+        const elCursor = document.getElementById('cursor');
+        const elOverlay = document.getElementById('overlay');
+        const btnStart = document.getElementById('btn-start');
+        const btnRecalibrate = document.getElementById('btn-recalibrate');
+        const msgPerm = document.getElementById('perm-msg');
+        
+        // Sliders
+        const sliderSens = document.getElementById('slider-sens');
+        const sliderFilter = document.getElementById('slider-filter');
+        const lblSens = document.getElementById('lbl-sens');
+        const lblFilter = document.getElementById('lbl-filter');
 
-        // Format number helper
-        const fmt = (num, suffix = '') => {
-            if (num === null || num === undefined) return `0.00${suffix}`;
-            return `${Number(num).toFixed(2)}${suffix}`;
-        };
+        // Debug
+        const dbgRawA = document.getElementById('debug-raw-a');
+        const dbgRawB = document.getElementById('debug-raw-b');
+        const dbgSmoothX = document.getElementById('debug-smooth-x');
+        const dbgSmoothY = document.getElementById('debug-smooth-y');
 
-        // Update Screen Orientation
-        function updateScreenOrientation() {
-            if (window.screen && window.screen.orientation) {
-                els.screenAngle.textContent = `${window.screen.orientation.angle}°`;
-                els.screenType.textContent = window.screen.orientation.type;
-            } else if (window.orientation !== undefined) {
-                // Fallback for older browsers
-                els.screenAngle.textContent = `${window.orientation}°`;
-                els.screenType.textContent = Math.abs(window.orientation) === 90 ? 'landscape' : 'portrait';
-            }
-        }
+        // State Variables
+        let isTracking = false;
+        
+        // Raw Data
+        let rawAlpha = 0;
+        let rawBeta = 0;
+        
+        // Calibration Center
+        let baseAlpha = null;
+        let baseBeta = null;
 
-        // Handle Device Orientation (Gyroscope / Compass)
+        // Position Variables
+        let centerX = window.innerWidth / 2;
+        let centerY = window.innerHeight / 2;
+        
+        // Targets (before filtering)
+        let targetX = centerX;
+        let targetY = centerY;
+        
+        // Smoothed Output (applied Low-Pass Filter)
+        let smoothedX = centerX;
+        let smoothedY = centerY;
+
+        // Configuration
+        let sensitivity = parseFloat(sliderSens.value);
+        let filterStrength = parseFloat(sliderFilter.value);
+
+        // Update Settings from UI
+        sliderSens.addEventListener('input', (e) => {
+            sensitivity = parseFloat(e.target.value);
+            lblSens.textContent = `${sensitivity} px/deg`;
+        });
+
+        sliderFilter.addEventListener('input', (e) => {
+            filterStrength = parseFloat(e.target.value);
+            // Smaller value = more smoothing. Larger value = closer to raw data.
+            let label = "보통";
+            if(filterStrength < 0.15) label = "아주 부드러움";
+            else if(filterStrength > 0.5) label = "빠른 반응";
+            lblFilter.textContent = `${filterStrength.toFixed(2)} (${label})`;
+        });
+
+        // Handle Window Resize
+        window.addEventListener('resize', () => {
+            centerX = window.innerWidth / 2;
+            centerY = window.innerHeight / 2;
+        });
+
+        // Handle Device Orientation Data
         function handleOrientation(event) {
-            els.oriAlpha.textContent = fmt(event.alpha, '°');
-            els.oriBeta.textContent = fmt(event.beta, '°');
-            els.oriGamma.textContent = fmt(event.gamma, '°');
-        }
-
-        // Handle Device Motion (Accelerometer / Gyroscope rotation rate)
-        function handleMotion(event) {
-            // Rotation Rate
-            if (event.rotationRate) {
-                els.rotAlpha.textContent = fmt(event.rotationRate.alpha);
-                els.rotBeta.textContent = fmt(event.rotationRate.beta);
-                els.rotGamma.textContent = fmt(event.rotationRate.gamma);
-            }
+            // Some devices might return null if hardware is missing
+            if (event.alpha === null || event.beta === null) return;
             
-            // Acceleration (without gravity)
-            if (event.acceleration) {
-                els.accX.textContent = fmt(event.acceleration.x);
-                els.accY.textContent = fmt(event.acceleration.y);
-                els.accZ.textContent = fmt(event.acceleration.z);
-            }
+            rawAlpha = event.alpha;
+            rawBeta = event.beta;
 
-            // Acceleration (with gravity)
-            if (event.accelerationIncludingGravity) {
-                els.accGravX.textContent = fmt(event.accelerationIncludingGravity.x);
-                els.accGravY.textContent = fmt(event.accelerationIncludingGravity.y);
-                els.accGravZ.textContent = fmt(event.accelerationIncludingGravity.z);
-            }
+            if (baseAlpha === null || baseBeta === null) return; // Not calibrated yet
+
+            // 1. Calculate Deltas
+            let deltaAlpha = rawAlpha - baseAlpha;
+            let deltaBeta = rawBeta - baseBeta;
+
+            // 2. Wrap-around mitigation (0-360 boundaries)
+            // If the angle jumps from 359 to 1, delta is -358. We fix it to +2.
+            if (deltaAlpha > 180) deltaAlpha -= 360;
+            if (deltaAlpha < -180) deltaAlpha += 360;
+            
+            // Beta usually ranges -180 to 180, but applying wrap-around fix prevents flip glitches
+            if (deltaBeta > 180) deltaBeta -= 360;
+            if (deltaBeta < -180) deltaBeta += 360;
+
+            // 3. Map to Screen Coordinates
+            // Requirement: alpha increases -> right (X increases)
+            targetX = centerX + (deltaAlpha * sensitivity);
+            
+            // Requirement: beta increases -> up (Y decreases, since screen 0 is at top)
+            targetY = centerY - (deltaBeta * sensitivity);
         }
 
-        // Check for iOS 13+ permission requirements
-        function checkPermissions() {
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                els.permContainer.classList.remove('hidden');
-            } else {
-                // If permission is not explicitly required via user action (Android/older iOS), start listening immediately
-                startSensors();
+        // Main Animation & Physics Loop
+        function loop() {
+            if (isTracking) {
+                // Apply Low-Pass Filter (LPF)
+                // Formula: smoothed = smoothed + filterStrength * (target - smoothed)
+                smoothedX += filterStrength * (targetX - smoothedX);
+                smoothedY += filterStrength * (targetY - smoothedY);
+
+                // Clamp values to keep cursor on screen
+                smoothedX = Math.max(0, Math.min(window.innerWidth, smoothedX));
+                smoothedY = Math.max(0, Math.min(window.innerHeight, smoothedY));
+
+                // Update Cursor Position visually
+                elCursor.style.transform = `translate(${smoothedX}px, ${smoothedY}px)`;
+
+                // Update Debug UI
+                dbgRawA.textContent = rawAlpha.toFixed(1);
+                dbgRawB.textContent = rawBeta.toFixed(1);
+                dbgSmoothX.textContent = Math.round(smoothedX);
+                dbgSmoothY.textContent = Math.round(smoothedY);
             }
+
+            requestAnimationFrame(loop);
         }
 
-        // Start listening to sensors
-        function startSensors() {
+        // Start Tracking & Set Center Base
+        function startTracking() {
             window.addEventListener('deviceorientation', handleOrientation);
-            window.addEventListener('devicemotion', handleMotion);
-            els.permContainer.classList.add('hidden');
+            
+            // Allow a small delay for sensors to stabilize before setting base
+            setTimeout(() => {
+                baseAlpha = rawAlpha;
+                baseBeta = rawBeta;
+                
+                // Snap smoothed coords to center immediately
+                smoothedX = targetX = centerX;
+                smoothedY = targetY = centerY;
+                
+                isTracking = true;
+                elOverlay.classList.add('hidden');
+                elCursor.style.display = 'block';
+                
+                // Start animation loop if not already running
+                requestAnimationFrame(loop);
+            }, 300);
         }
 
-        // Request Permission Button Click
-        els.btnPerm.addEventListener('click', () => {
+        // Recalibrate (Reset center point)
+        btnRecalibrate.addEventListener('click', () => {
+            baseAlpha = rawAlpha;
+            baseBeta = rawBeta;
+            
+            // Reset to exact center immediately to prevent flying cursor
+            targetX = centerX;
+            targetY = centerY;
+            smoothedX = centerX;
+            smoothedY = centerY;
+        });
+
+        // Request Permissions (Required for iOS 13+)
+        btnStart.addEventListener('click', () => {
+            msgPerm.classList.add('hidden');
+            
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
                     .then(permissionState => {
                         if (permissionState === 'granted') {
-                            startSensors();
+                            startTracking();
                         } else {
-                            els.btnPerm.textContent = "권한이 거부되었습니다.";
-                            els.btnPerm.classList.replace('bg-blue-600', 'bg-red-600');
+                            msgPerm.classList.remove('hidden');
                         }
                     })
                     .catch(console.error);
             } else {
-                startSensors();
+                // Non-iOS 13+ devices (Android, older iOS)
+                startTracking();
             }
         });
-
-        // Initialize screen orientation listeners
-        if (window.screen && window.screen.orientation) {
-            window.screen.orientation.addEventListener('change', updateScreenOrientation);
-        } else {
-            window.addEventListener('orientationchange', updateScreenOrientation);
-        }
-
-        // Setup on load
-        window.onload = () => {
-            updateScreenOrientation();
-            checkPermissions();
-        };
 
     </script>
 </body>

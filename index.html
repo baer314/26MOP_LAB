@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>커스텀 에어 마우스 (포인터 그립)</title>
+    <title>커스텀 에어 마우스 (원형 제한)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -11,10 +11,22 @@
             background-color: #121212;
             color: white;
             overflow: hidden;
-            touch-action: none; /* 터치 스크롤 방지 */
+            touch-action: none;
             font-family: 'Inter', sans-serif;
         }
         
+        /* 이동 반경 제한 가이드라인 (원형) */
+        #boundary-circle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 2px dashed rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
         /* 조준선 커서 디자인 */
         #cursor {
             position: absolute;
@@ -69,6 +81,9 @@
 </head>
 <body class="w-screen h-screen flex flex-col items-center justify-center relative">
 
+    <!-- 이동 반경 가이드라인 -->
+    <div id="boundary-circle"></div>
+
     <!-- 조준선 커서 -->
     <div id="cursor" style="left: 50%; top: 50%;"></div>
 
@@ -84,12 +99,9 @@
         </button>
     </div>
 
-    <!-- ⭐️ 설정 패널 (감도 & 데드존) ⭐️ -->
+    <!-- 설정 패널 -->
     <div class="absolute top-4 left-4 right-4 bg-gray-900/80 border border-gray-700 rounded-xl p-4 z-30 backdrop-blur-md shadow-lg flex flex-col gap-4">
-        
-        <!-- 슬라이더 컨트롤 -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- 감도(Sensitivity) 설정 -->
             <div class="flex flex-col">
                 <div class="flex justify-between mb-1">
                     <label class="text-xs text-gray-400">마우스 감도 (Sensitivity)</label>
@@ -98,7 +110,6 @@
                 <input type="range" id="slider-sens" min="5" max="50" step="1" value="20">
             </div>
 
-            <!-- 데드존(Deadzone) 설정 -->
             <div class="flex flex-col">
                 <div class="flex justify-between mb-1">
                     <label class="text-xs text-gray-400">데드존 (떨림 방지)</label>
@@ -108,7 +119,6 @@
             </div>
         </div>
 
-        <!-- 축 반전 컨트롤 -->
         <div class="flex justify-between items-center border-t border-gray-700 pt-3">
             <div class="text-[10px] text-gray-500">방향이 거꾸로 움직인다면 체크하세요.</div>
             <div class="flex gap-4">
@@ -132,11 +142,11 @@
 
     <script>
         const cursor = document.getElementById('cursor');
+        const boundaryCircle = document.getElementById('boundary-circle');
         const btnStart = document.getElementById('btn-start');
         const startScreen = document.getElementById('start-screen');
         const btnRecenter = document.getElementById('btn-recenter');
         
-        // 설정 UI 요소
         const sliderSens = document.getElementById('slider-sens');
         const sliderDead = document.getElementById('slider-dead');
         const valSens = document.getElementById('val-sens');
@@ -144,22 +154,34 @@
         const chkInvertX = document.getElementById('chk-invert-x');
         const chkInvertY = document.getElementById('chk-invert-y');
 
-        // 상태 변수
         let SENSITIVITY = parseFloat(sliderSens.value);
         let DEADZONE = parseFloat(sliderDead.value);
         
         let screenW = window.innerWidth;
         let screenH = window.innerHeight;
+        let maxRadius = 0; // 원형 제한의 최대 반지름
+        
         let cursorX = screenW / 2;
         let cursorY = screenH / 2;
         let lastTime = 0;
 
-        window.addEventListener('resize', () => {
+        // 화면 크기가 바뀔 때마다 중심점과 최대 반지름 업데이트
+        function updateBounds() {
             screenW = window.innerWidth;
             screenH = window.innerHeight;
-        });
+            
+            // 화면의 가로, 세로 중 더 짧은 길이를 구하고 반으로 나누어 반지름 설정
+            // 커서 크기(40px)가 잘리지 않도록 20px 정도 여백을 뺌
+            maxRadius = (Math.min(screenW, screenH) / 2) - 20; 
+            
+            // 시각적 가이드라인 크기 설정 (지름 = 반지름 * 2)
+            boundaryCircle.style.width = `${maxRadius * 2}px`;
+            boundaryCircle.style.height = `${maxRadius * 2}px`;
+        }
 
-        // 슬라이더 이벤트 리스너
+        window.addEventListener('resize', updateBounds);
+        updateBounds(); // 초기 크기 설정
+
         sliderSens.addEventListener('input', (e) => {
             SENSITIVITY = parseFloat(e.target.value);
             valSens.textContent = SENSITIVITY.toFixed(1);
@@ -170,7 +192,6 @@
             valDead.textContent = DEADZONE.toFixed(1);
         });
 
-        // 자이로스코프 데이터 처리
         function handleMotion(event) {
             const rr = event.rotationRate;
             if (!rr || rr.alpha === null) return;
@@ -180,54 +201,65 @@
             const dt = (now - lastTime) / 1000;
             lastTime = now;
 
-            // ⭐️ 포인터 그립 축 매핑 ⭐️
-            // 윗면이 앞, 볼륨키가 위쪽을 향할 때:
-            // Beta(X축 중심 회전) = 기기를 좌우로 흔드는 동작 (Yaw)
-            // Alpha(Z축 중심 회전) = 기기를 위아래로 끄덕이는 동작 (Pitch)
             let rawYawRate = rr.beta; 
             let rawPitchRate = rr.alpha;
 
-            // 데드존 적용 (수치 미만의 미세한 떨림은 0으로 처리)
             let yawRate = Math.abs(rawYawRate) < DEADZONE ? 0 : rawYawRate;
             let pitchRate = Math.abs(rawPitchRate) < DEADZONE ? 0 : rawPitchRate;
 
-            // 축 반전 적용
             const dirX = chkInvertX.checked ? -1 : 1;
-            const dirY = chkInvertY.checked ? 1 : -1; // 기본적으로 위로 들면 -값이 나와야 화면 상단(0)으로 이동하므로 -1을 곱함
+            const dirY = chkInvertY.checked ? 1 : -1;
 
-            // 이동량 계산
             const dx = yawRate * dt * SENSITIVITY * dirX;
             const dy = pitchRate * dt * SENSITIVITY * dirY;
 
+            // 이동할 좌표 1차 적용
             cursorX += dx;
             cursorY += dy;
 
-            // 화면 밖으로 나가지 않도록 제한
-            cursorX = Math.max(20, Math.min(screenW - 20, cursorX));
-            cursorY = Math.max(20, Math.min(screenH - 20, cursorY));
+            // ⭐️ 원형 반경 제한 로직 (피타고라스 정리 사용) ⭐️
+            const centerX = screenW / 2;
+            const centerY = screenH / 2;
+            
+            // 중심점에서 커서까지의 X, Y 거리
+            const distX = cursorX - centerX;
+            const distY = cursorY - centerY;
+            
+            // 중심점에서 커서까지의 실제 직선 거리
+            const distance = Math.sqrt(distX * distX + distY * distY);
+
+            // 커서가 설정된 최대 반지름을 벗어났다면
+            if (distance > maxRadius) {
+                // 비율을 계산하여 반지름 경계선으로 커서 좌표를 끌어내림
+                const ratio = maxRadius / distance;
+                cursorX = centerX + (distX * ratio);
+                cursorY = centerY + (distY * ratio);
+            }
         }
 
-        // 화면 렌더링 루프
         function updateDisplay() {
             cursor.style.left = `${cursorX}px`;
             cursor.style.top = `${cursorY}px`;
             requestAnimationFrame(updateDisplay);
         }
 
-        // 영점 리셋 기능
         btnRecenter.addEventListener('click', () => {
             cursorX = screenW / 2;
             cursorY = screenH / 2;
             
             cursor.style.transform = 'translate(-50%, -50%) scale(1.5)';
             cursor.style.borderColor = 'white';
+            
+            // 가이드라인도 같이 깜빡임 효과
+            boundaryCircle.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+            
             setTimeout(() => {
                 cursor.style.transform = 'translate(-50%, -50%) scale(1)';
                 cursor.style.borderColor = '#00ff00';
+                boundaryCircle.style.borderColor = 'rgba(255, 255, 255, 0.1)';
             }, 100);
         });
 
-        // 시작 버튼
         btnStart.addEventListener('click', async () => {
             if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
                 try {

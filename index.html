@@ -3,19 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Air Mouse (devicemotion)</title>
+    <title>Air Mouse (Gyroscope)</title>
     <style>
         body, html {
             margin: 0;
             padding: 0;
-            /* 모바일 브라우저 UI를 제외한 실제 화면 높이에 맞춤 */
             height: 100dvh; 
             width: 100%;
             overflow: hidden;
             background-color: #1e1e1e;
             color: #ffffff;
             font-family: sans-serif;
-            touch-action: none; /* 화면 스크롤 방지 */
+            touch-action: none;
             box-sizing: border-box;
         }
         
@@ -27,16 +26,14 @@
             border-radius: 50%;
             transform: translate(-50%, -50%);
             box-shadow: 0 0 10px rgba(255, 51, 51, 0.8);
-            transition: background-color 0.2s;
+            transition: background-color 0.2s, box-shadow 0.2s;
             z-index: 100;
             pointer-events: none;
-            left: 50%;
-            top: 50%;
         }
 
         #ui-container {
             position: absolute;
-            top: max(20px, env(safe-area-inset-top)); /* 노치 디자인 대응 */
+            top: max(20px, env(safe-area-inset-top));
             left: 0;
             width: 100%;
             display: flex;
@@ -74,25 +71,23 @@
 
         #debug-panel {
             position: absolute;
-            /* 하단 네비게이션 바 및 안전 영역을 고려한 여백 설정 */
             bottom: max(15px, env(safe-area-inset-bottom));
             left: 10px;
-            right: 10px; /* 양쪽 여백을 주어 화면에 꽉 차게 맞춤 */
+            right: 10px;
             font-family: monospace;
-            /* 화면 크기에 따라 폰트 크기 자동 조절 */
-            font-size: clamp(10px, 3vw, 13px); 
+            font-size: clamp(11px, 3vw, 14px); 
             background-color: rgba(0, 0, 0, 0.7);
             padding: 12px;
             border-radius: 8px;
             pointer-events: none;
             line-height: 1.6;
-            word-break: keep-all; /* 단어 단위로 줄바꿈 허용 */
+            word-break: keep-all;
             box-sizing: border-box;
         }
 
         .debug-row {
             display: flex;
-            flex-wrap: wrap; /* 공간이 부족하면 아래로 줄바꿈 */
+            flex-wrap: wrap;
             justify-content: space-between;
             border-bottom: 1px solid rgba(255,255,255,0.1);
             padding-bottom: 4px;
@@ -106,7 +101,6 @@
         }
 
         .highlight { color: #00ffcc; }
-        .z-axis { color: #ff9900; } 
     </style>
 </head>
 <body>
@@ -115,46 +109,53 @@
 
     <div id="ui-container">
         <button id="btn-start">센서 권한 허용 및 시작</button>
-        <button id="btn-zero">영점 초기화 (0, 0)</button>
+        <button id="btn-zero">화면 중앙으로 포인터 리셋</button>
     </div>
 
-    <!-- UI 개선된 디버그 패널 -->
+    <!-- 디버그 패널: 자이로스코프 회전값 중심으로 변경 -->
     <div id="debug-panel">
         <div class="debug-row">
-            <span>RAW_X: <span id="raw-x">0.00</span></span>
-            <span>RAW_Y: <span id="raw-y">0.00</span></span>
-            <span class="z-axis">RAW_Z: <span id="raw-z">0.00</span></span>
+            <span>회전_좌우(Beta): <span id="gyro-x">0.00</span></span>
+            <span>회전_상하(Alpha): <span id="gyro-y">0.00</span></span>
         </div>
         <div class="debug-row highlight">
-            <span>OFFSET_X: <span id="offset-x">0.00</span></span>
-            <span>OFFSET_Y: <span id="offset-y">0.00</span></span>
-            <span class="z-axis">OFFSET_Z: <span id="offset-z">0.00</span></span>
-        </div>
-        <div class="debug-row">
-            <span>CALIB_X: <span id="calib-x">0.00</span></span>
-            <span>CALIB_Y: <span id="calib-y">0.00</span></span>
-            <span class="z-axis">CALIB_Z: <span id="calib-z">0.00</span></span>
+            <span>포인터_X: <span id="pos-x">0</span></span>
+            <span>포인터_Y: <span id="pos-y">0</span></span>
         </div>
     </div>
 
     <script>
-        let rawX = 0, rawY = 0, rawZ = 0;
-        let offsetX = 0, offsetY = 0, offsetZ = 0;
-        let smoothedX = 0, smoothedY = 0, smoothedZ = 0;
+        // 포인터의 실제 화면 좌표
+        let pointerX = window.innerWidth / 2;
+        let pointerY = window.innerHeight / 2;
+
+        // 자이로스코프 원본 데이터
+        let gyroRawX = 0; // 좌우 회전 (Beta)
+        let gyroRawY = 0; // 상하 회전 (Alpha)
+
+        // 부드러운 움직임을 위한 로우패스 필터
+        let smoothedGyroX = 0;
+        let smoothedGyroY = 0;
         
-        const filterFactor = 0.8; 
-        const sensitivity = 60; 
+        const filterFactor = 0.6; // 0에 가까울수록 반응속도 빠름, 1에 가까울수록 부드러움
+        
+        // 감도 설정: 숫자를 높일수록 포인터가 빠르게 움직입니다.
+        // 기종(아이폰/안드로이드) 및 볼륨키 위치(왼/오른쪽)에 따라 반대로 움직인다면 이 숫자를 음수(예: -0.5)로 변경하세요.
+        const sensitivityX = 0.6; 
+        const sensitivityY = 0.6; 
 
         const pointer = document.getElementById('pointer');
         const btnStart = document.getElementById('btn-start');
         const btnZero = document.getElementById('btn-zero');
-        
-        let centerX = window.innerWidth / 2;
-        let centerY = window.innerHeight / 2;
 
+        // 초기 포인터 위치 세팅
+        pointer.style.left = pointerX + 'px';
+        pointer.style.top = pointerY + 'px';
+
+        // 창 크기 변경 시 화면 밖으로 나가는 것 방지
         window.addEventListener('resize', () => {
-            centerX = window.innerWidth / 2;
-            centerY = window.innerHeight / 2;
+            pointerX = Math.max(10, Math.min(window.innerWidth - 10, pointerX));
+            pointerY = Math.max(10, Math.min(window.innerHeight - 10, pointerY));
         });
 
         btnStart.addEventListener('click', async () => {
@@ -182,61 +183,62 @@
         }
 
         function handleMotion(event) {
-            const acc = event.accelerationIncludingGravity;
-            if (!acc) return;
+            // 회전 속도(자이로스코프) 데이터 가져오기
+            const rotation = event.rotationRate;
+            if (!rotation) return;
 
-            rawX = acc.x || 0;
-            rawY = acc.y || 0;
-            rawZ = acc.z || 0; 
+            // 스마트폰 윗부분이 앞을 향하고, 볼륨키가 위(또는 아래)로 향한 가로 모드 기준:
+            // Beta 축 회전: 기기를 좌우로 돌리는 모션 (Yaw)
+            // Alpha 축 회전: 기기를 위아래로 끄덕이는 모션 (Pitch)
+            
+            // 데드존(Deadzone) 설정: 미세한 손떨림은 무시 (값이 1 이하일 경우 0으로 처리)
+            let rawBeta = rotation.beta || 0;
+            let rawAlpha = rotation.alpha || 0;
+            
+            gyroRawX = Math.abs(rawBeta) > 1 ? rawBeta : 0;
+            gyroRawY = Math.abs(rawAlpha) > 1 ? rawAlpha : 0;
 
-            document.getElementById('raw-x').textContent = rawX.toFixed(2);
-            document.getElementById('raw-y').textContent = rawY.toFixed(2);
-            document.getElementById('raw-z').textContent = rawZ.toFixed(2); 
+            document.getElementById('gyro-x').textContent = gyroRawX.toFixed(2);
+            document.getElementById('gyro-y').textContent = gyroRawY.toFixed(2);
         }
 
+        // 영점 초기화: 자이로스코프 방식에서는 포인터를 정중앙으로 불러오는 기능으로 작동
         btnZero.addEventListener('click', () => {
-            offsetX = rawX;
-            offsetY = rawY;
-            offsetZ = rawZ; 
+            pointerX = window.innerWidth / 2;
+            pointerY = window.innerHeight / 2;
+            
+            smoothedGyroX = 0;
+            smoothedGyroY = 0;
 
-            smoothedX = 0;
-            smoothedY = 0;
-            smoothedZ = 0; 
-
+            // 시각적 피드백
             pointer.style.backgroundColor = '#00ffcc';
             pointer.style.boxShadow = '0 0 15px rgba(0, 255, 204, 0.8)';
             setTimeout(() => {
                 pointer.style.backgroundColor = '#ff3333';
                 pointer.style.boxShadow = '0 0 10px rgba(255, 51, 51, 0.8)';
             }, 200);
-
-            document.getElementById('offset-x').textContent = offsetX.toFixed(2);
-            document.getElementById('offset-y').textContent = offsetY.toFixed(2);
-            document.getElementById('offset-z').textContent = offsetZ.toFixed(2); 
         });
 
         function updatePointer() {
-            let calibratedX = rawX - offsetX;
-            let calibratedY = rawY - offsetY;
-            let calibratedZ = rawZ - offsetZ; 
+            // 로우패스 필터로 회전 속도 부드럽게 만들기
+            smoothedGyroX = smoothedGyroX * filterFactor + gyroRawX * (1 - filterFactor);
+            smoothedGyroY = smoothedGyroY * filterFactor + gyroRawY * (1 - filterFactor);
 
-            smoothedX = smoothedX * filterFactor + calibratedX * (1 - filterFactor);
-            smoothedY = smoothedY * filterFactor + calibratedY * (1 - filterFactor);
-            smoothedZ = smoothedZ * filterFactor + calibratedZ * (1 - filterFactor); 
+            // 포인터 좌표에 회전 '속도'를 더해줌 (실제 마우스와 동일한 원리)
+            // ※ 만약 좌우/상하가 반대로 움직인다면 아래의 + 를 - 로 바꾸거나 sensitivity 부호를 바꾸세요.
+            pointerX += smoothedGyroX * sensitivityX;
+            pointerY += smoothedGyroY * sensitivityY;
 
-            let pointerX = centerX - (smoothedX * sensitivity);
-            let pointerY = centerY + (smoothedY * sensitivity);
-
-            // 포인터가 화면 밖으로 나가지 않도록 경계 설정 (창 크기가 변경될 수 있으므로 매 프레임 확인)
+            // 화면 밖으로 나가지 않도록 경계 설정
             pointerX = Math.max(10, Math.min(window.innerWidth - 10, pointerX));
             pointerY = Math.max(10, Math.min(window.innerHeight - 10, pointerY));
 
+            // 포인터 위치 화면에 적용
             pointer.style.left = pointerX + 'px';
             pointer.style.top = pointerY + 'px';
 
-            document.getElementById('calib-x').textContent = smoothedX.toFixed(2);
-            document.getElementById('calib-y').textContent = smoothedY.toFixed(2);
-            document.getElementById('calib-z').textContent = smoothedZ.toFixed(2); 
+            document.getElementById('pos-x').textContent = Math.round(pointerX);
+            document.getElementById('pos-y').textContent = Math.round(pointerY);
 
             requestAnimationFrame(updatePointer);
         }

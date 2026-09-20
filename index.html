@@ -2,222 +2,248 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Z축 가속도 커서</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D 원기둥 모션 제어</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        /* 기본 터치 동작 및 선택 방지 */
-        body {
-            touch-action: pan-y;
-            -webkit-user-select: none;
-            user-select: none;
-        }
-        
-        /* 커서의 부드러운 움직임을 위한 트랜지션 (렌더링 루프가 처리하므로 제외할 수도 있으나 보정용으로 짧게 줌) */
-        #cursor {
-            transition: transform 0.05s linear;
-        }
-
-        /* 커스텀 슬라이더 스타일링 */
-        input[type=range] {
-            -webkit-appearance: none;
-            width: 100%;
-            background: transparent;
-        }
-        input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            height: 24px;
-            width: 24px;
-            border-radius: 50%;
-            background: #3b82f6;
-            cursor: pointer;
-            margin-top: -8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-        input[type=range]::-webkit-slider-runnable-track {
-            width: 100%;
-            height: 8px;
-            cursor: pointer;
-            background: #e5e7eb;
-            border-radius: 4px;
-        }
+        body { margin: 0; overflow: hidden; background-color: #111; color: white; font-family: 'Inter', sans-serif; }
+        canvas { display: block; width: 100%; height: 100%; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; pointer-events: auto; }
+        .data-panel { background: rgba(255,255,255,0.1); backdrop-filter: blur(5px); padding: 15px; border-radius: 12px; font-size: 14px; pointer-events: auto; max-width: 300px; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col items-center p-4">
+<body>
 
-    <div class="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 mt-4 flex flex-col gap-6">
-        
-        <div class="text-center">
-            <h1 class="text-2xl font-bold text-gray-900">Z축 가속도 커서</h1>
-            <p class="text-sm text-gray-500 mt-1">기기를 앞뒤로 밀거나 당겨보세요</p>
-        </div>
-
-        <!-- 에러/안내 메시지 표시 영역 -->
-        <div id="messageBox" class="hidden rounded-lg p-4 text-sm font-medium"></div>
-
-        <!-- 시작 버튼 (센서 권한 요청용) -->
-        <button id="startBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-md active:scale-95 transition-transform duration-150">
-            센서 시작 및 권한 허용
+    <div id="start-screen">
+        <h1 class="text-2xl font-bold mb-4 text-center">모션 센서 3D 검 제어</h1>
+        <p class="text-sm text-gray-300 mb-8 text-center max-w-xs">
+            스마트폰을 휘둘러 3D 원기둥을 제어해보세요.<br>
+            (iOS 기기는 센서 접근 권한이 필요합니다.)
+        </p>
+        <button id="start-btn" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-full font-semibold shadow-[0_0_15px_rgba(37,99,235,0.5)] transition-all">
+            센서 활성화 및 시작
         </button>
+    </div>
 
-        <!-- 센서 데이터 및 데드존 표시 -->
-        <div class="bg-gray-100 rounded-xl p-4 flex flex-col gap-2 shadow-inner text-sm">
-            <div class="flex justify-between">
-                <span class="font-semibold text-gray-600">현재 Z축 가속도:</span>
-                <span id="zValueDisplay" class="font-mono text-blue-600 font-bold">0.00</span>
-            </div>
-            <div class="flex justify-between">
-                <span class="font-semibold text-gray-600">현재 데드존 설정값:</span>
-                <span id="deadzoneDisplay" class="font-mono text-red-500 font-bold">0.50</span>
-            </div>
-        </div>
-
-        <!-- 데드존 슬라이더 -->
-        <div class="flex flex-col gap-2">
-            <label for="deadzoneSlider" class="text-sm font-semibold text-gray-700">데드존 조절 (0.0 ~ 3.0)</label>
-            <input type="range" id="deadzoneSlider" min="0" max="3" step="0.1" value="0.5">
-        </div>
-
-        <!-- 커서 트랙 및 커서 -->
-        <div class="flex flex-col gap-2 mt-4">
-            <span class="text-sm font-semibold text-gray-700">이동 영역</span>
-            <div id="track" class="w-full h-24 bg-gray-200 rounded-xl shadow-inner relative overflow-hidden flex items-center border border-gray-300">
-                <!-- 커서 (빨간 공) -->
-                <div id="cursor" class="w-10 h-10 bg-red-500 rounded-full shadow-md absolute left-0 flex items-center justify-center border-2 border-white">
-                    <div class="w-3 h-3 bg-white rounded-full opacity-60"></div>
-                </div>
-            </div>
-            <div class="flex justify-between text-xs text-gray-400 px-1 mt-1">
-                <span>◀ 왼쪽 이동 (-)</span>
-                <span>오른쪽 이동 (+) ▶</span>
+    <div id="ui-layer">
+        <div class="data-panel shadow-lg border border-gray-700">
+            <h2 class="font-bold text-blue-400 mb-2">실시간 센서 상태</h2>
+            <div id="status-text" class="text-green-400 font-semibold mb-2">상태: 평온함 (LPF: 0.2)</div>
+            <div>Alpha (회전): <span id="val-alpha">0</span></div>
+            <div>Beta (기울기): <span id="val-beta">0</span></div>
+            <div class="mt-2 text-xs text-gray-400">
+                ※ 기기를 강하게 흔들면 방어 로직이 작동하여 포인터가 일시적으로 끈적해집니다.
             </div>
         </div>
-
     </div>
 
     <script>
-        // DOM 요소 참조
-        const startBtn = document.getElementById('startBtn');
-        const messageBox = document.getElementById('messageBox');
-        const zValueDisplay = document.getElementById('zValueDisplay');
-        const deadzoneDisplay = document.getElementById('deadzoneDisplay');
-        const deadzoneSlider = document.getElementById('deadzoneSlider');
-        const track = document.getElementById('track');
-        const cursor = document.getElementById('cursor');
-
-        // 상태 변수
-        let isRunning = false;
-        let currentZ = 0;
-        let deadzone = parseFloat(deadzoneSlider.value);
-        let cursorX = 0; // 초기 위치는 나중에 컨테이너 크기에 맞춰 중앙으로 이동
+        // --- 1. 상태 변수 및 필터 설정 ---
+        const SENSITIVITY = 0.02;     // 회전 민감도 (라디안 단위 변환 보정)
+        const MAX_DELTA = 45;         // 방어 로직 1: 1프레임당 허용하는 최대 각도 변화 (노이즈 컷)
+        const NORMAL_LPF = 0.2;       // 평상시 부드러운 필터 가중치
+        const DEFENSE_LPF = 0.02;     // 강한 충격 시 튀는 것을 막는 끈적한 방어 가중치
         
-        // 이동 민감도 (픽셀 단위 변환 계수)
-        const sensitivity = 5.0;
-
-        // 메시지 표시 함수 (alert 대체)
-        function showMessage(text, type = 'error') {
-            messageBox.textContent = text;
-            messageBox.className = `rounded-lg p-4 text-sm font-medium mb-2 ${
-                type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-            }`;
-            messageBox.style.display = 'block';
-        }
-
-        // 초기 화면 중앙 정렬
-        function initCursorPosition() {
-            const trackWidth = track.clientWidth;
-            const cursorWidth = cursor.clientWidth;
-            cursorX = (trackWidth - cursorWidth) / 2;
-            cursor.style.transform = `translateX(${cursorX}px)`;
-        }
+        let LPF_WEIGHT = NORMAL_LPF;  
         
-        // 창 크기 변경 시 중앙으로 재배치
-        window.addEventListener('resize', initCursorPosition);
-        // DOM 로드 완료 시 초기화
-        document.addEventListener('DOMContentLoaded', initCursorPosition);
+        let prevAlpha = null;
+        let prevBeta = null;
+        let smoothedAlphaDelta = 0;
+        let smoothedBetaDelta = 0;
 
-        // 데드존 슬라이더 이벤트
-        deadzoneSlider.addEventListener('input', (e) => {
-            deadzone = parseFloat(e.target.value);
-            deadzoneDisplay.textContent = deadzone.toFixed(2);
+        // 원기둥의 누적 회전값
+        let targetRotationX = 0;
+        let targetRotationY = 0;
+
+        // UI 엘리먼트
+        const valAlpha = document.getElementById('val-alpha');
+        const valBeta = document.getElementById('val-beta');
+        const statusText = document.getElementById('status-text');
+
+        // --- 2. Three.js 기본 씬 셋업 ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x111111, 0.05);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 10;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // --- 3. 조명 (Lighting) ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 5);
+        scene.add(dirLight);
+        const pointLight = new THREE.PointLight(0x3b82f6, 1, 20); // 푸른빛
+        pointLight.position.set(-5, 0, 5);
+        scene.add(pointLight);
+
+        // --- 4. 긴 원기둥(스마트폰/검) 메쉬 생성 ---
+        const group = new THREE.Group(); // 회전 중심을 잡기 위한 그룹
+
+        // 본체 (긴 원기둥)
+        const geometry = new THREE.CylinderGeometry(0.3, 0.4, 6, 32);
+        const material = new THREE.MeshStandardMaterial({ 
+            color: 0x475569, 
+            metalness: 0.8, 
+            roughness: 0.2 
         });
+        const cylinder = new THREE.Mesh(geometry, material);
+        cylinder.rotation.x = Math.PI / 2; // 누워있는 상태로 초기화 (앞으로 뻗은 형태)
+        group.add(cylinder);
 
-        // 가속도 센서 이벤트 처리 함수
-        function handleMotion(event) {
-            // event.acceleration: 중력을 제외한 기기의 선형 가속도
-            if (!event.acceleration || event.acceleration.z === null) {
+        // 앞/뒤를 구분하기 위한 발광(Glow) 코어 포인트 추가
+        const coreGeo = new THREE.BoxGeometry(0.4, 4, 0.5);
+        const coreMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
+        const core = new THREE.Mesh(coreGeo, coreMat);
+        core.position.y = 0.2;
+        core.rotation.x = Math.PI / 2;
+        group.add(core);
+
+        scene.add(group);
+
+        // 배경 그리드 헬퍼 (공간감 제공)
+        const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+        gridHelper.position.y = -3;
+        gridHelper.rotation.x = Math.PI / 8; // 약간 기울여서 보기 좋게
+        scene.add(gridHelper);
+
+        // --- 5. 모션 센서 로직 (DeviceOrientation & Motion) ---
+        function handleOrientation(event) {
+            let rawAlpha = event.alpha; // Z축 기준 회전 (0~360)
+            let rawBeta = event.beta;   // X축 기준 앞뒤 기울기 (-180~180)
+
+            if (rawAlpha === null || rawBeta === null) return;
+
+            if (prevAlpha === null || prevBeta === null) {
+                prevAlpha = rawAlpha;
+                prevBeta = rawBeta;
                 return;
             }
 
-            const z = event.acceleration.z;
-            currentZ = z;
-            zValueDisplay.textContent = z.toFixed(2);
+            // 변화량(Delta) 계산
+            let deltaAlpha = rawAlpha - prevAlpha;
+            let deltaBeta = rawBeta - prevBeta;
 
-            // 데드존을 초과하는 가속도에 대해서만 반응
-            if (Math.abs(z) > deadzone) {
-                // Z축이 양수면 오른쪽(증가), 음수면 왼쪽(감소)
-                // 데드존만큼 값을 빼주어 움직임이 부드럽게 시작되도록 함
-                let effectiveZ = z > 0 ? z - deadzone : z + deadzone;
-                let moveAmount = effectiveZ * sensitivity;
+            // [핵심 방어 로직 1] 짐벌 락(Wrap-around) 방어
+            // 359도에서 1도로 넘어갈 때 358도 회전했다고 착각하는 현상 억제
+            if (deltaAlpha > 180) deltaAlpha -= 360;
+            else if (deltaAlpha < -180) deltaAlpha += 360;
 
-                cursorX += moveAmount;
-
-                // 트랙 경계 계산 (커서가 밖으로 나가지 않도록 Clamp)
-                const trackWidth = track.clientWidth;
-                const cursorWidth = cursor.clientWidth;
-                const maxCursorX = trackWidth - cursorWidth;
-
-                // 0과 maxCursorX 사이로 제한
-                if (cursorX < 0) cursorX = 0;
-                if (cursorX > maxCursorX) cursorX = maxCursorX;
+            // 노이즈 컷: 물리적으로 불가능한 순간적인 각도 튐 무시
+            if (Math.abs(deltaAlpha) > MAX_DELTA || Math.abs(deltaBeta) > MAX_DELTA) {
+                prevAlpha = rawAlpha;
+                prevBeta = rawBeta;
+                return;
             }
+
+            // [로우 패스 필터] 노이즈를 깎고 궤적을 부드럽게
+            smoothedAlphaDelta = (smoothedAlphaDelta * (1 - LPF_WEIGHT)) + (deltaAlpha * LPF_WEIGHT);
+            smoothedBetaDelta = (smoothedBetaDelta * (1 - LPF_WEIGHT)) + (deltaBeta * LPF_WEIGHT);
+
+            // [방향 매핑] 
+            // 알파(좌우 회전) 증가 -> Three.js Y축 회전 감소 (오른쪽으로 돌기 위함)
+            // 베타(상하 기울기) 증가 -> Three.js X축 회전 감소 (위로 들기 위함)
+            targetRotationY -= smoothedAlphaDelta * SENSITIVITY;
+            targetRotationX -= smoothedBetaDelta * SENSITIVITY;
+
+            // 회전 반경 제한 (너무 뒤집어지지 않게 Clamp 처리)
+            targetRotationX = Math.max(-Math.PI/2, Math.min(Math.PI/2, targetRotationX));
+
+            // 데이터 UI 업데이트
+            valAlpha.innerText = targetRotationY.toFixed(2);
+            valBeta.innerText = targetRotationX.toFixed(2);
+
+            prevAlpha = rawAlpha;
+            prevBeta = rawBeta;
         }
 
-        // 렌더링 루프 (부드러운 UI 업데이트)
-        function renderLoop() {
-            if (isRunning) {
-                cursor.style.transform = `translateX(${cursorX}px)`;
-            }
-            requestAnimationFrame(renderLoop);
-        }
+        function handleMotion(event) {
+            let accel = event.acceleration; // 중력을 제외한 순수 기기 가속도
+            if (!accel || accel.x === null) return;
 
-        // 센서 시작 버튼 클릭 이벤트
-        startBtn.addEventListener('click', async () => {
-            if (isRunning) return;
+            // 가해지는 순수 물리적 힘(3축 벡터의 크기)
+            let shakeForce = Math.sqrt(accel.x**2 + accel.y**2 + accel.z**2);
 
-            // iOS 13+ 기기 권한 요청 로직
-            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-                try {
-                    const permissionState = await DeviceMotionEvent.requestPermission();
-                    if (permissionState === 'granted') {
-                        startSensor();
-                        showMessage('센서 접근이 허용되었습니다.', 'success');
-                    } else {
-                        showMessage('센서 접근 권한이 거부되었습니다.');
-                    }
-                } catch (error) {
-                    console.error(error);
-                    showMessage('권한 요청 중 오류가 발생했습니다.');
-                }
+            // [핵심 방어 로직 2] 충격 감지 시 적응형 필터링
+            if (shakeForce > 4.0) {
+                LPF_WEIGHT = DEFENSE_LPF; // 방어 모드: 포인터 고정력 강화
+                statusText.innerText = "상태: 강한 흔들림 (방어 로직 가동!)";
+                statusText.className = "text-red-500 font-bold mb-2";
+                
+                // 시각적 피드백: 흔들림 감지 시 코어 색상 붉게 변경
+                coreMat.color.setHex(0xef4444);
             } else {
-                // 권한 요청이 필요 없는 브라우저 (안드로이드 크롬 등)
-                startSensor();
-                showMessage('센서가 시작되었습니다.', 'success');
+                LPF_WEIGHT = NORMAL_LPF;  // 정상 복귀
+                statusText.innerText = `상태: 평온함 (LPF: ${NORMAL_LPF})`;
+                statusText.className = "text-green-400 font-semibold mb-2";
+                
+                // 시각적 피드백 원래대로
+                coreMat.color.setHex(0x3b82f6);
+            }
+        }
+
+        // --- 6. 렌더링 애니메이션 루프 ---
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // 목표 회전값으로 부드럽게 보간(Interpolation) 적용 - 시각적 부드러움 극대화
+            group.rotation.x += (targetRotationX - group.rotation.x) * 0.1;
+            group.rotation.y += (targetRotationY - group.rotation.y) * 0.1;
+
+            renderer.render(scene, camera);
+        }
+
+        // 브라우저 크기 변경 대응
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- 7. 권한 요청 및 초기화 (iOS 13+ 대응) ---
+        document.getElementById('start-btn').addEventListener('click', () => {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            startSensors();
+                        } else {
+                            alert('센서 접근 권한이 거부되었습니다.');
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // 안드로이드 또는 권한 요청이 필요 없는 브라우저
+                startSensors();
             }
         });
 
-        function startSensor() {
+        function startSensors() {
+            document.getElementById('start-screen').style.display = 'none';
+            window.addEventListener('deviceorientation', handleOrientation);
             window.addEventListener('devicemotion', handleMotion);
-            isRunning = true;
-            startBtn.textContent = '작동 중...';
-            startBtn.classList.replace('bg-blue-600', 'bg-green-600');
-            startBtn.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
-            startBtn.disabled = true;
             
-            // 애니메이션 루프 시작
-            requestAnimationFrame(renderLoop);
-        }
+            // 데스크톱 디버깅용 마우스 대체 로직 (센서가 없을 경우)
+            let isDragging = false;
+            let prevX = 0; let prevY = 0;
+            window.addEventListener('mousedown', (e) => { isDragging = true; prevX = e.clientX; prevY = e.clientY; });
+            window.addEventListener('mouseup', () => { isDragging = false; });
+            window.addEventListener('mousemove', (e) => {
+                if(!isDragging) return;
+                let dx = e.clientX - prevX; let dy = e.clientY - prevY;
+                targetRotationY += dx * 0.01; targetRotationX += dy * 0.01;
+                prevX = e.clientX; prevY = e.clientY;
+            });
 
+            animate(); // 애니메이션 루프 시작
+        }
     </script>
 </body>
 </html>

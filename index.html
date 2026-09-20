@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>조이콘 스타일 에어 마우스</title>
+    <title>커스텀 에어 마우스 (포인터 그립)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -12,6 +12,7 @@
             color: white;
             overflow: hidden;
             touch-action: none; /* 터치 스크롤 방지 */
+            font-family: 'Inter', sans-serif;
         }
         
         /* 조준선 커서 디자인 */
@@ -34,16 +35,35 @@
             background-color: #00ff00;
         }
         
-        /* 십자선 */
         #cursor::before { top: 50%; left: -10px; right: -10px; height: 2px; transform: translateY(-50%); }
         #cursor::after { left: 50%; top: -10px; bottom: -10px; width: 2px; transform: translateX(-50%); }
 
-        .btn-press {
-            transition: transform 0.1s, filter 0.1s;
-        }
         .btn-press:active {
             transform: scale(0.95);
             filter: brightness(0.8);
+        }
+
+        /* 슬라이더 커스텀 디자인 */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #4ade80;
+            cursor: pointer;
+            margin-top: -6px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #4b5563;
+            border-radius: 2px;
         }
     </style>
 </head>
@@ -52,34 +72,62 @@
     <!-- 조준선 커서 -->
     <div id="cursor" style="left: 50%; top: 50%;"></div>
 
+    <!-- 시작 오버레이 -->
     <div id="start-screen" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-40 backdrop-blur-sm">
-        <h1 class="text-3xl font-bold text-green-400 mb-4"><i class="fa-solid fa-gamepad"></i> 조이콘 에어 마우스</h1>
-        <p class="text-gray-300 text-center mb-8 text-sm px-6">
-            기기를 바닥과 수평으로 들고(리모컨처럼) 시작하세요.<br>
-            자이로스코프(회전 속도)를 이용해 커서가 부드럽게 이동합니다.
+        <h1 class="text-3xl font-bold text-green-400 mb-4"><i class="fa-solid fa-gamepad"></i> 포인터 마우스</h1>
+        <p class="text-gray-300 text-center mb-8 text-sm px-6 leading-relaxed">
+            기기를 권총처럼 쥐어주세요.<br>
+            <span class="text-white font-bold">(핸드폰 윗면 = 앞쪽 / 볼륨키 = 위쪽)</span><br>
         </p>
         <button id="btn-start" class="btn-press bg-green-500 text-black font-bold text-xl py-4 px-10 rounded-full shadow-[0_0_20px_rgba(0,255,0,0.4)]">
             시작하기 (권한 요청)
         </button>
     </div>
 
-    <!-- UI 오버레이 -->
+    <!-- ⭐️ 설정 패널 (감도 & 데드존) ⭐️ -->
+    <div class="absolute top-4 left-4 right-4 bg-gray-900/80 border border-gray-700 rounded-xl p-4 z-30 backdrop-blur-md shadow-lg flex flex-col gap-4">
+        
+        <!-- 슬라이더 컨트롤 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- 감도(Sensitivity) 설정 -->
+            <div class="flex flex-col">
+                <div class="flex justify-between mb-1">
+                    <label class="text-xs text-gray-400">마우스 감도 (Sensitivity)</label>
+                    <span id="val-sens" class="text-xs text-green-400 font-bold">20.0</span>
+                </div>
+                <input type="range" id="slider-sens" min="5" max="50" step="1" value="20">
+            </div>
+
+            <!-- 데드존(Deadzone) 설정 -->
+            <div class="flex flex-col">
+                <div class="flex justify-between mb-1">
+                    <label class="text-xs text-gray-400">데드존 (떨림 방지)</label>
+                    <span id="val-dead" class="text-xs text-green-400 font-bold">0.8</span>
+                </div>
+                <input type="range" id="slider-dead" min="0" max="3" step="0.1" value="0.8">
+            </div>
+        </div>
+
+        <!-- 축 반전 컨트롤 -->
+        <div class="flex justify-between items-center border-t border-gray-700 pt-3">
+            <div class="text-[10px] text-gray-500">방향이 거꾸로 움직인다면 체크하세요.</div>
+            <div class="flex gap-4">
+                <label class="flex items-center gap-1 text-xs cursor-pointer">
+                    <input type="checkbox" id="chk-invert-x" class="accent-green-500"> 좌우 반전
+                </label>
+                <label class="flex items-center gap-1 text-xs cursor-pointer">
+                    <input type="checkbox" id="chk-invert-y" class="accent-green-500"> 상하 반전
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- 하단 조작 버튼 -->
     <div class="absolute bottom-10 left-0 right-0 flex justify-center gap-6 z-30">
         <button id="btn-recenter" class="btn-press bg-gray-800 border-2 border-gray-600 text-white rounded-full w-20 h-20 flex flex-col items-center justify-center shadow-lg">
             <i class="fa-solid fa-crosshairs text-2xl mb-1 text-blue-400"></i>
-            <span class="text-[10px]">영점(Y)</span>
+            <span class="text-[10px]">영점 리셋</span>
         </button>
-        
-        <button class="btn-press bg-green-600 border-2 border-green-500 text-white rounded-full w-20 h-20 flex flex-col items-center justify-center shadow-lg">
-            <i class="fa-solid fa-fire text-2xl mb-1"></i>
-            <span class="text-[10px]">클릭(A)</span>
-        </button>
-    </div>
-
-    <!-- 디버그 정보 -->
-    <div class="absolute top-4 left-4 text-xs font-mono text-gray-500 z-10 pointer-events-none">
-        <div id="debug-yaw">Yaw (Left/Right): 0.00</div>
-        <div id="debug-pitch">Pitch (Up/Down): 0.00</div>
     </div>
 
     <script>
@@ -88,85 +136,98 @@
         const startScreen = document.getElementById('start-screen');
         const btnRecenter = document.getElementById('btn-recenter');
         
-        // 화면 크기
+        // 설정 UI 요소
+        const sliderSens = document.getElementById('slider-sens');
+        const sliderDead = document.getElementById('slider-dead');
+        const valSens = document.getElementById('val-sens');
+        const valDead = document.getElementById('val-dead');
+        const chkInvertX = document.getElementById('chk-invert-x');
+        const chkInvertY = document.getElementById('chk-invert-y');
+
+        // 상태 변수
+        let SENSITIVITY = parseFloat(sliderSens.value);
+        let DEADZONE = parseFloat(sliderDead.value);
+        
         let screenW = window.innerWidth;
         let screenH = window.innerHeight;
+        let cursorX = screenW / 2;
+        let cursorY = screenH / 2;
+        let lastTime = 0;
+
         window.addEventListener('resize', () => {
             screenW = window.innerWidth;
             screenH = window.innerHeight;
         });
 
-        // 커서 위치 (초기값 화면 중앙)
-        let cursorX = screenW / 2;
-        let cursorY = screenH / 2;
+        // 슬라이더 이벤트 리스너
+        sliderSens.addEventListener('input', (e) => {
+            SENSITIVITY = parseFloat(e.target.value);
+            valSens.textContent = SENSITIVITY.toFixed(1);
+        });
 
-        // 조이콘 세팅값
-        const SENSITIVITY = 18.0; // 감도 (클수록 빠름)
-        const DEADZONE = 0.8;     // 데드존 (초당 회전 각도가 이 값 이하면 무시하여 수전증/드리프트 방지)
+        sliderDead.addEventListener('input', (e) => {
+            DEADZONE = parseFloat(e.target.value);
+            valDead.textContent = DEADZONE.toFixed(1);
+        });
 
-        let lastTime = 0;
-
+        // 자이로스코프 데이터 처리
         function handleMotion(event) {
             const rr = event.rotationRate;
             if (!rr || rr.alpha === null) return;
 
-            // 시간 차이(Delta Time) 계산
             const now = performance.now();
             if (lastTime === 0) { lastTime = now; return; }
-            const dt = (now - lastTime) / 1000; // 초 단위 변환
+            const dt = (now - lastTime) / 1000;
             lastTime = now;
 
-            // 기기를 수평으로 들고(리모컨처럼) 앞을 가리킬 때:
-            // Alpha: 좌우 회전 (Yaw)
-            // Beta: 위아래 고개 끄덕임 (Pitch)
-            let yawRate = rr.alpha; 
-            let pitchRate = rr.beta;
+            // ⭐️ 포인터 그립 축 매핑 ⭐️
+            // 윗면이 앞, 볼륨키가 위쪽을 향할 때:
+            // Beta(X축 중심 회전) = 기기를 좌우로 흔드는 동작 (Yaw)
+            // Alpha(Z축 중심 회전) = 기기를 위아래로 끄덕이는 동작 (Pitch)
+            let rawYawRate = rr.beta; 
+            let rawPitchRate = rr.alpha;
 
-            // 데드존 적용 (수치 미만의 미세한 떨림은 무시)
-            if (Math.abs(yawRate) < DEADZONE) yawRate = 0;
-            if (Math.abs(pitchRate) < DEADZONE) pitchRate = 0;
+            // 데드존 적용 (수치 미만의 미세한 떨림은 0으로 처리)
+            let yawRate = Math.abs(rawYawRate) < DEADZONE ? 0 : rawYawRate;
+            let pitchRate = Math.abs(rawPitchRate) < DEADZONE ? 0 : rawPitchRate;
 
-            // 디버그 텍스트 업데이트
-            document.getElementById('debug-yaw').textContent = `Yaw: ${yawRate.toFixed(2)}`;
-            document.getElementById('debug-pitch').textContent = `Pitch: ${pitchRate.toFixed(2)}`;
+            // 축 반전 적용
+            const dirX = chkInvertX.checked ? -1 : 1;
+            const dirY = chkInvertY.checked ? 1 : -1; // 기본적으로 위로 들면 -값이 나와야 화면 상단(0)으로 이동하므로 -1을 곱함
 
-            // 속도 * 시간 * 감도 = 이동 거리(Delta)
-            // 방향 반전이 필요하면 여기의 + / - 기호를 바꿉니다.
-            const dx = yawRate * dt * SENSITIVITY;
-            const dy = pitchRate * dt * SENSITIVITY;
+            // 이동량 계산
+            const dx = yawRate * dt * SENSITIVITY * dirX;
+            const dy = pitchRate * dt * SENSITIVITY * dirY;
 
-            cursorX -= dx; // 좌우
-            cursorY -= dy; // 상하
+            cursorX += dx;
+            cursorY += dy;
 
-            // 화면 밖으로 나가지 않도록 제한 (Clamping)
+            // 화면 밖으로 나가지 않도록 제한
             cursorX = Math.max(20, Math.min(screenW - 20, cursorX));
             cursorY = Math.max(20, Math.min(screenH - 20, cursorY));
         }
 
-        // 화면 업데이트 (부드러운 렌더링)
+        // 화면 렌더링 루프
         function updateDisplay() {
             cursor.style.left = `${cursorX}px`;
             cursor.style.top = `${cursorY}px`;
             requestAnimationFrame(updateDisplay);
         }
 
-        // 영점 조준 함수 (화면 중앙으로 리셋)
-        function recenter() {
+        // 영점 리셋 기능
+        btnRecenter.addEventListener('click', () => {
             cursorX = screenW / 2;
             cursorY = screenH / 2;
             
-            // 시각적 피드백 (깜빡임 효과)
             cursor.style.transform = 'translate(-50%, -50%) scale(1.5)';
             cursor.style.borderColor = 'white';
             setTimeout(() => {
                 cursor.style.transform = 'translate(-50%, -50%) scale(1)';
                 cursor.style.borderColor = '#00ff00';
             }, 100);
-        }
+        });
 
-        btnRecenter.addEventListener('click', recenter);
-
-        // 시작 버튼 (권한 요청 및 이벤트 등록)
+        // 시작 버튼
         btnStart.addEventListener('click', async () => {
             if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
                 try {
@@ -187,11 +248,7 @@
         function initSensors() {
             startScreen.style.display = 'none';
             lastTime = performance.now();
-            
-            // Orientation 대신 Motion(가속도/자이로) 이벤트 사용
             window.addEventListener('devicemotion', handleMotion);
-            
-            // 렌더링 루프 시작
             updateDisplay();
         }
     </script>

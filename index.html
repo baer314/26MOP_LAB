@@ -2,260 +2,243 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <!-- 화면 비율 고정 및 터치 확대 방지 -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Air Mouse Pointer</title>
-    <!-- Tailwind CSS 로드 -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Air Mouse (devicemotion)</title>
     <style>
-        /* 기본 리셋 및 다크 테마 배경 설정 */
         body, html {
             margin: 0;
             padding: 0;
+            /* 모바일 브라우저 UI를 제외한 실제 화면 높이에 맞춤 */
+            height: 100dvh; 
             width: 100%;
-            height: 100%;
-            background-color: #121212;
-            overflow: hidden; /* 스크롤 방지 */
-            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            background-color: #1e1e1e;
             color: #ffffff;
+            font-family: sans-serif;
+            touch-action: none; /* 화면 스크롤 방지 */
+            box-sizing: border-box;
         }
-
-        /* 빛나는 포인터 효과 */
+        
         #pointer {
             position: absolute;
-            width: 24px;
-            height: 24px;
-            background-color: #ef4444; /* 빨간색 닷 */
+            width: 20px;
+            height: 20px;
+            background-color: #ff3333;
             border-radius: 50%;
-            pointer-events: none; /* 포인터가 마우스 이벤트를 가로채지 않도록 설정 */
-            box-shadow: 0 0 15px 5px rgba(239, 68, 68, 0.6);
-            /* transform을 사용하여 성능 최적화 (JS에서 업데이트) */
             transform: translate(-50%, -50%);
-            display: none; /* 초기에는 숨김 */
-            z-index: 50;
-            /* 부드러운 움직임을 위해 트랜지션 추가 (로우패스 필터와 함께 작용) */
-            transition: transform 0.05s linear;
+            box-shadow: 0 0 10px rgba(255, 51, 51, 0.8);
+            transition: background-color 0.2s;
+            z-index: 100;
+            pointer-events: none;
+            left: 50%;
+            top: 50%;
         }
 
-        /* 중앙 크로스헤어(기준점) - 참고용 */
-        .crosshair {
+        #ui-container {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 40px;
-            height: 40px;
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-            opacity: 0.2;
+            top: max(20px, env(safe-area-inset-top)); /* 노치 디자인 대응 */
+            left: 0;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
             z-index: 10;
         }
-        .crosshair::before, .crosshair::after {
-            content: '';
-            position: absolute;
-            background: white;
+
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            max-width: 90%;
         }
-        .crosshair::before { top: 50%; left: 0; width: 100%; height: 1px; }
-        .crosshair::after { top: 0; left: 50%; width: 1px; height: 100%; }
+
+        button:active {
+            background-color: #0056b3;
+            transform: translateY(2px);
+        }
+
+        #btn-zero {
+            background-color: #28a745;
+            display: none;
+        }
+        
+        #btn-zero:active {
+            background-color: #1e7e34;
+        }
+
+        #debug-panel {
+            position: absolute;
+            /* 하단 네비게이션 바 및 안전 영역을 고려한 여백 설정 */
+            bottom: max(15px, env(safe-area-inset-bottom));
+            left: 10px;
+            right: 10px; /* 양쪽 여백을 주어 화면에 꽉 차게 맞춤 */
+            font-family: monospace;
+            /* 화면 크기에 따라 폰트 크기 자동 조절 */
+            font-size: clamp(10px, 3vw, 13px); 
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 12px;
+            border-radius: 8px;
+            pointer-events: none;
+            line-height: 1.6;
+            word-break: keep-all; /* 단어 단위로 줄바꿈 허용 */
+            box-sizing: border-box;
+        }
+
+        .debug-row {
+            display: flex;
+            flex-wrap: wrap; /* 공간이 부족하면 아래로 줄바꿈 */
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 4px;
+            margin-bottom: 4px;
+        }
+        
+        .debug-row:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+            margin-bottom: 0;
+        }
+
+        .highlight { color: #00ffcc; }
+        .z-axis { color: #ff9900; } 
     </style>
 </head>
-<body class="flex flex-col items-center justify-center">
+<body>
 
-    <!-- 중앙 기준점 -->
-    <div class="crosshair"></div>
-
-    <!-- 에어 마우스 포인터 -->
     <div id="pointer"></div>
 
-    <!-- 영점 초기화 버튼 (실행 후 표시됨) -->
-    <button id="calibrate-btn" class="hidden absolute top-4 right-4 z-40 px-5 py-2 bg-gray-800 bg-opacity-70 hover:bg-gray-700 border border-gray-600 text-white rounded-lg shadow-lg backdrop-blur-sm transition-all text-sm font-semibold active:scale-95">
-        🎯 영점 초기화 (0,0)
-    </button>
-
-    <!-- 시작 버튼 화면 (권한 요청 및 안내) -->
-    <div id="start-screen" class="z-40 flex flex-col items-center justify-center absolute inset-0 bg-black bg-opacity-80 backdrop-blur-sm p-6 text-center">
-        <h1 class="text-3xl font-bold mb-4 text-white">Air Mouse Tester</h1>
-        <p class="text-gray-300 mb-8 max-w-md">
-            핸드폰을 리모컨처럼 쥐고 기울여보세요.<br>
-            위/아래, 좌/우 기울기에 따라 포인터가 이동합니다.<br>
-            <span class="text-sm text-yellow-400 mt-2 block">(iOS는 센서 권한 허용이 필요합니다)</span>
-        </p>
-        <button id="start-btn" class="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-semibold text-lg transition-all shadow-[0_0_20px_rgba(37,99,235,0.5)] active:scale-95">
-            센서 연동 시작하기
-        </button>
+    <div id="ui-container">
+        <button id="btn-start">센서 권한 허용 및 시작</button>
+        <button id="btn-zero">영점 초기화 (0, 0)</button>
     </div>
 
-    <!-- 디버그 정보 패널 -->
-    <div id="debug-panel" class="absolute bottom-4 left-4 right-4 bg-gray-900 bg-opacity-80 rounded-xl p-4 text-xs font-mono text-gray-300 hidden z-30 shadow-2xl">
-        <div class="grid grid-cols-2 gap-3 text-center mb-2">
-            <!-- X축 정보 -->
-            <div class="bg-gray-800 p-2 rounded-lg flex flex-col">
-                <span class="text-gray-500 mb-1 font-sans">X (Raw / Off / Cal)</span>
-                <span>
-                    <span id="val-x" class="text-blue-400">0.00</span> / 
-                    <span id="off-x" class="text-gray-500">0.00</span> / 
-                    <span id="cal-x" class="text-white font-bold text-sm">0.00</span>
-                </span>
-            </div>
-            <!-- Y축 정보 -->
-            <div class="bg-gray-800 p-2 rounded-lg flex flex-col">
-                <span class="text-gray-500 mb-1 font-sans">Y (Raw / Off / Cal)</span>
-                <span>
-                    <span id="val-y" class="text-green-400">0.00</span> / 
-                    <span id="off-y" class="text-gray-500">0.00</span> / 
-                    <span id="cal-y" class="text-white font-bold text-sm">0.00</span>
-                </span>
-            </div>
+    <!-- UI 개선된 디버그 패널 -->
+    <div id="debug-panel">
+        <div class="debug-row">
+            <span>RAW_X: <span id="raw-x">0.00</span></span>
+            <span>RAW_Y: <span id="raw-y">0.00</span></span>
+            <span class="z-axis">RAW_Z: <span id="raw-z">0.00</span></span>
         </div>
-        <div class="text-center text-gray-500">
-            Screen: <span id="val-screen">0 x 0</span>
+        <div class="debug-row highlight">
+            <span>OFFSET_X: <span id="offset-x">0.00</span></span>
+            <span>OFFSET_Y: <span id="offset-y">0.00</span></span>
+            <span class="z-axis">OFFSET_Z: <span id="offset-z">0.00</span></span>
+        </div>
+        <div class="debug-row">
+            <span>CALIB_X: <span id="calib-x">0.00</span></span>
+            <span>CALIB_Y: <span id="calib-y">0.00</span></span>
+            <span class="z-axis">CALIB_Z: <span id="calib-z">0.00</span></span>
         </div>
     </div>
 
     <script>
-        // DOM 요소 캐싱
-        const startBtn = document.getElementById('start-btn');
-        const startScreen = document.getElementById('start-screen');
-        const pointer = document.getElementById('pointer');
-        const debugPanel = document.getElementById('debug-panel');
-        const calibrateBtn = document.getElementById('calibrate-btn');
-        
-        const valX = document.getElementById('val-x');
-        const valY = document.getElementById('val-y');
-        const offX = document.getElementById('off-x');
-        const offY = document.getElementById('off-y');
-        const calX = document.getElementById('cal-x');
-        const calY = document.getElementById('cal-y');
-        const valScreen = document.getElementById('val-screen');
-
-        // 상태 변수
-        let isRunning = false;
-        
-        // 원시 센서 데이터 (가속도)
         let rawX = 0, rawY = 0, rawZ = 0;
+        let offsetX = 0, offsetY = 0, offsetZ = 0;
+        let smoothedX = 0, smoothedY = 0, smoothedZ = 0;
         
-        // 로우패스 필터가 적용된 부드러운 데이터
-        let smoothedX = 0, smoothedY = 0;
+        const filterFactor = 0.8; 
+        const sensitivity = 60; 
 
-        // 영점(Offset) 데이터 및 보정된(Calibrated) 데이터
-        let offsetX = 0, offsetY = 0;
-        let calibratedX = 0, calibratedY = 0;
+        const pointer = document.getElementById('pointer');
+        const btnStart = document.getElementById('btn-start');
+        const btnZero = document.getElementById('btn-zero');
         
-        // 로우패스 필터 계수 (0.0 ~ 1.0)
-        // 값이 작을수록 더 부드럽지만 지연(latency)이 생기고, 크면 빠르지만 떨림이 심해집니다.
-        const LPF_ALPHA = 0.15; 
-        
-        // 중력 가속도 최대치 기준 (대략 9.8m/s^2)
-        const MAX_G = 9.8; 
+        let centerX = window.innerWidth / 2;
+        let centerY = window.innerHeight / 2;
 
-        // 영점 초기화 버튼 이벤트 리스너
-        calibrateBtn.addEventListener('click', () => {
-            // 현재 안정화된 센서 값을 영점(Offset)으로 저장
-            offsetX = smoothedX;
-            offsetY = smoothedY;
-            
-            // 영점이 설정되었다는 시각적 피드백 (포인터 파란색으로 반짝임)
-            pointer.style.backgroundColor = '#3b82f6';
-            pointer.style.boxShadow = '0 0 20px 8px rgba(59, 130, 246, 0.8)';
-            setTimeout(() => {
-                pointer.style.backgroundColor = '#ef4444';
-                pointer.style.boxShadow = '0 0 15px 5px rgba(239, 68, 68, 0.6)';
-            }, 300);
+        window.addEventListener('resize', () => {
+            centerX = window.innerWidth / 2;
+            centerY = window.innerHeight / 2;
         });
 
-        // 시작 버튼 이벤트 리스너 (권한 요청)
-        startBtn.addEventListener('click', async () => {
-            // iOS 13+ 기기를 위한 권한 요청 로직
+        btnStart.addEventListener('click', async () => {
             if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
                 try {
                     const permissionState = await DeviceMotionEvent.requestPermission();
                     if (permissionState === 'granted') {
-                        initSensor();
+                        startSensor();
                     } else {
                         alert('센서 접근 권한이 거부되었습니다.');
                     }
                 } catch (error) {
-                    console.error("권한 요청 에러:", error);
-                    alert('권한을 요청하는 중 오류가 발생했습니다.');
+                    console.error('권한 요청 에러:', error);
                 }
             } else {
-                // 권한 요청이 필요 없는 환경 (안드로이드, PC 등)
-                initSensor();
+                startSensor();
             }
         });
 
-        // 센서 초기화 및 리스너 등록
-        function initSensor() {
-            startScreen.style.display = 'none';
-            pointer.style.display = 'block';
-            debugPanel.style.display = 'block';
-            calibrateBtn.style.display = 'block'; // 영점 초기화 버튼 표시
-            isRunning = true;
-
-            // devicemotion 이벤트 리스너 등록
-            window.addEventListener('devicemotion', handleMotion, false);
-            
-            // 화면 갱신 루프 시작
-            requestAnimationFrame(updateLoop);
+        function startSensor() {
+            btnStart.style.display = 'none';
+            btnZero.style.display = 'block';
+            window.addEventListener('devicemotion', handleMotion);
+            requestAnimationFrame(updatePointer);
         }
 
-        // 센서 데이터 핸들러
         function handleMotion(event) {
-            // accelerationIncludingGravity: 중력을 포함한 기기의 가속도
-            if (event.accelerationIncludingGravity) {
-                // 값이 null일 수 있으므로 기본값 0 처리
-                rawX = event.accelerationIncludingGravity.x || 0;
-                rawY = event.accelerationIncludingGravity.y || 0;
-                rawZ = event.accelerationIncludingGravity.z || 0;
-            }
+            const acc = event.accelerationIncludingGravity;
+            if (!acc) return;
+
+            rawX = acc.x || 0;
+            rawY = acc.y || 0;
+            rawZ = acc.z || 0; 
+
+            document.getElementById('raw-x').textContent = rawX.toFixed(2);
+            document.getElementById('raw-y').textContent = rawY.toFixed(2);
+            document.getElementById('raw-z').textContent = rawZ.toFixed(2); 
         }
 
-        // 메인 업데이트 루프 (화면 렌더링)
-        function updateLoop() {
-            if (!isRunning) return;
+        btnZero.addEventListener('click', () => {
+            offsetX = rawX;
+            offsetY = rawY;
+            offsetZ = rawZ; 
 
-            // 화면 크기 가져오기
-            const screenW = window.innerWidth;
-            const screenH = window.innerHeight;
-            valScreen.innerText = `${screenW} x ${screenH}`;
+            smoothedX = 0;
+            smoothedY = 0;
+            smoothedZ = 0; 
 
-            // 1. 로우패스 필터 적용 (이전 값에 새 값을 일정 비율로 섞음)
-            smoothedX = (LPF_ALPHA * rawX) + ((1 - LPF_ALPHA) * smoothedX);
-            smoothedY = (LPF_ALPHA * rawY) + ((1 - LPF_ALPHA) * smoothedY);
+            pointer.style.backgroundColor = '#00ffcc';
+            pointer.style.boxShadow = '0 0 15px rgba(0, 255, 204, 0.8)';
+            setTimeout(() => {
+                pointer.style.backgroundColor = '#ff3333';
+                pointer.style.boxShadow = '0 0 10px rgba(255, 51, 51, 0.8)';
+            }, 200);
 
-            // 2. 영점(Offset)을 적용하여 현재 기준 각도에서의 상대적 기울기(보정값) 계산
-            calibratedX = smoothedX - offsetX;
-            calibratedY = smoothedY - offsetY;
+            document.getElementById('offset-x').textContent = offsetX.toFixed(2);
+            document.getElementById('offset-y').textContent = offsetY.toFixed(2);
+            document.getElementById('offset-z').textContent = offsetZ.toFixed(2); 
+        });
 
-            // 3. 가속도 데이터를 화면 좌표로 매핑 (Mapping)
-            // 기준점(calibrated)을 0으로 놓고 화면 중앙에서 움직이도록 계산
-            let pointerX = (screenW / 2) - ((calibratedX / MAX_G) * (screenW / 2));
-            let pointerY = (screenH / 2) + ((calibratedY / MAX_G) * (screenH / 2));
+        function updatePointer() {
+            let calibratedX = rawX - offsetX;
+            let calibratedY = rawY - offsetY;
+            let calibratedZ = rawZ - offsetZ; 
 
-            // 화면 밖으로 나가지 않도록 값 제한 (Clamp)
-            pointerX = Math.max(12, Math.min(pointerX, screenW - 12));
-            pointerY = Math.max(12, Math.min(pointerY, screenH - 12));
+            smoothedX = smoothedX * filterFactor + calibratedX * (1 - filterFactor);
+            smoothedY = smoothedY * filterFactor + calibratedY * (1 - filterFactor);
+            smoothedZ = smoothedZ * filterFactor + calibratedZ * (1 - filterFactor); 
 
-<<<<<<< HEAD
-            // 2D 포인터 이동 로직 (X, Y만 사용)
-            let pointerX = centerZ - (smoothedZ * sensitivity);
-            let pointerY = centerY - (smoothedY * sensitivity);
-=======
-            // 4. 포인터 위치 업데이트
-            pointer.style.transform = `translate(${pointerX}px, ${pointerY}px) translate(-50%, -50%)`;
->>>>>>> parent of 09a712a (테스트 1.2)
+            let pointerX = centerX - (smoothedX * sensitivity);
+            let pointerY = centerY + (smoothedY * sensitivity);
 
-            // 5. 디버그 패널 텍스트 업데이트 (소수점 2자리)
-            valX.innerText = rawX.toFixed(2);
-            valY.innerText = rawY.toFixed(2);
-            
-            offX.innerText = offsetX.toFixed(2);
-            offY.innerText = offsetY.toFixed(2);
-            
-            calX.innerText = calibratedX.toFixed(2);
-            calY.innerText = calibratedY.toFixed(2);
+            // 포인터가 화면 밖으로 나가지 않도록 경계 설정 (창 크기가 변경될 수 있으므로 매 프레임 확인)
+            pointerX = Math.max(10, Math.min(window.innerWidth - 10, pointerX));
+            pointerY = Math.max(10, Math.min(window.innerHeight - 10, pointerY));
 
-            // 다음 프레임 요청
-            requestAnimationFrame(updateLoop);
+            pointer.style.left = pointerX + 'px';
+            pointer.style.top = pointerY + 'px';
+
+            document.getElementById('calib-x').textContent = smoothedX.toFixed(2);
+            document.getElementById('calib-y').textContent = smoothedY.toFixed(2);
+            document.getElementById('calib-z').textContent = smoothedZ.toFixed(2); 
+
+            requestAnimationFrame(updatePointer);
         }
     </script>
 </body>

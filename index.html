@@ -23,12 +23,11 @@
             position: absolute;
             top: 0;
             left: 0;
-            width: 24px;
-            height: 24px;
-            background-color: #ef4444; /* Tailwind red-500 */
-            border-radius: 50%;
-            border: 2px solid #ffffff;
-            box-shadow: 0 0 15px rgba(239, 68, 68, 0.8), 0 0 5px rgba(255, 255, 255, 0.5);
+            width: 8px;
+            height: 60px;
+            background-color: #00ffcc; /* 형광 녹색 */
+            border-radius: 4px; /* 모서리 둥글게 */
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.8), 0 0 5px rgba(255, 255, 255, 0.5);
             /* Center the cursor element on its coordinates */
             transform: translate(-50%, -50%);
             pointer-events: none; /* Let clicks pass through */
@@ -104,11 +103,13 @@
         <div class="mt-4 grid grid-cols-2 gap-2 text-[10px] sm:text-xs font-mono text-slate-400 bg-slate-900/50 p-2 rounded-lg border border-slate-700/50">
             <div>
                 <span class="text-blue-400">RAW A:</span> <span id="debug-raw-a">0.0</span>°<br>
-                <span class="text-green-400">RAW B:</span> <span id="debug-raw-b">0.0</span>°
+                <span class="text-green-400">RAW B:</span> <span id="debug-raw-b">0.0</span>°<br>
+                <span class="text-purple-400">RAW G:</span> <span id="debug-raw-g">0.0</span>°
             </div>
             <div>
                 <span class="text-red-400">SMOOTH X:</span> <span id="debug-smooth-x">0</span>px<br>
-                <span class="text-yellow-400">SMOOTH Y:</span> <span id="debug-smooth-y">0</span>px
+                <span class="text-yellow-400">SMOOTH Y:</span> <span id="debug-smooth-y">0</span>px<br>
+                <span class="text-white">ROTATION:</span> <span id="debug-smooth-r">0</span>°
             </div>
         </div>
     </div>
@@ -130,8 +131,10 @@
         // Debug
         const dbgRawA = document.getElementById('debug-raw-a');
         const dbgRawB = document.getElementById('debug-raw-b');
+        const dbgRawG = document.getElementById('debug-raw-g');
         const dbgSmoothX = document.getElementById('debug-smooth-x');
         const dbgSmoothY = document.getElementById('debug-smooth-y');
+        const dbgSmoothR = document.getElementById('debug-smooth-r');
 
         // State Variables
         let isTracking = false;
@@ -139,10 +142,12 @@
         // Raw Data
         let rawAlpha = 0;
         let rawBeta = 0;
+        let rawGamma = 0;
         
         // Calibration Center
         let baseAlpha = null;
         let baseBeta = null;
+        let baseGamma = null;
 
         // Position Variables
         let centerX = window.innerWidth / 2;
@@ -151,10 +156,12 @@
         // Targets (before filtering)
         let targetX = centerX;
         let targetY = centerY;
+        let targetRotation = 0;
         
         // Smoothed Output (applied Low-Pass Filter)
         let smoothedX = centerX;
         let smoothedY = centerY;
+        let smoothedRotation = 0;
 
         // Configuration
         let sensitivity = parseFloat(sliderSens.value);
@@ -184,16 +191,18 @@
         // Handle Device Orientation Data
         function handleOrientation(event) {
             // Some devices might return null if hardware is missing
-            if (event.alpha === null || event.beta === null) return;
+            if (event.alpha === null || event.beta === null || event.gamma === null) return;
             
             rawAlpha = event.alpha;
             rawBeta = event.beta;
+            rawGamma = event.gamma;
 
-            if (baseAlpha === null || baseBeta === null) return; // Not calibrated yet
+            if (baseAlpha === null || baseBeta === null || baseGamma === null) return; // Not calibrated yet
 
             // 1. Calculate Deltas
             let deltaAlpha = rawAlpha - baseAlpha;
             let deltaBeta = rawBeta - baseBeta;
+            let deltaGamma = rawGamma - baseGamma;
 
             // 2. Wrap-around mitigation (0-360 boundaries)
             // If the angle jumps from 359 to 1, delta is -358. We fix it to +2.
@@ -204,12 +213,18 @@
             if (deltaBeta > 180) deltaBeta -= 360;
             if (deltaBeta < -180) deltaBeta += 360;
 
+            if (deltaGamma > 180) deltaGamma -= 360;
+            if (deltaGamma < -180) deltaGamma += 360;
+
             // 3. Map to Screen Coordinates
-            // Requirement: alpha increases -> right (X increases)
+            // Requirement: alpha increases -> left (X decreases, - 사용으로 좌우 반전)
             targetX = centerX - (deltaAlpha * sensitivity);
             
             // Requirement: beta increases -> up (Y decreases, since screen 0 is at top)
             targetY = centerY - (deltaBeta * sensitivity);
+
+            // Requirement: gamma changes -> rotation (회전 민감도를 위해 증폭 계수 적용)
+            targetRotation = deltaGamma * 2.0;
         }
 
         // Main Animation & Physics Loop
@@ -219,19 +234,23 @@
                 // Formula: smoothed = smoothed + filterStrength * (target - smoothed)
                 smoothedX += filterStrength * (targetX - smoothedX);
                 smoothedY += filterStrength * (targetY - smoothedY);
+                smoothedRotation += filterStrength * (targetRotation - smoothedRotation);
 
                 // Clamp values to keep cursor on screen
                 smoothedX = Math.max(0, Math.min(window.innerWidth, smoothedX));
                 smoothedY = Math.max(0, Math.min(window.innerHeight, smoothedY));
 
-                // Update Cursor Position visually
-                elCursor.style.transform = `translate(${smoothedX}px, ${smoothedY}px)`;
+                // Update Cursor Position & Rotation visually
+                // 중심점을 기준으로 이동 후 회전 적용
+                elCursor.style.transform = `translate(${smoothedX}px, ${smoothedY}px) translate(-50%, -50%) rotate(${smoothedRotation}deg)`;
 
                 // Update Debug UI
                 dbgRawA.textContent = rawAlpha.toFixed(1);
                 dbgRawB.textContent = rawBeta.toFixed(1);
+                if(dbgRawG) dbgRawG.textContent = rawGamma.toFixed(1);
                 dbgSmoothX.textContent = Math.round(smoothedX);
                 dbgSmoothY.textContent = Math.round(smoothedY);
+                if(dbgSmoothR) dbgSmoothR.textContent = Math.round(smoothedRotation);
             }
 
             requestAnimationFrame(loop);
@@ -245,10 +264,12 @@
             setTimeout(() => {
                 baseAlpha = rawAlpha;
                 baseBeta = rawBeta;
+                baseGamma = rawGamma;
                 
                 // Snap smoothed coords to center immediately
                 smoothedX = targetX = centerX;
                 smoothedY = targetY = centerY;
+                smoothedRotation = targetRotation = 0;
                 
                 isTracking = true;
                 elOverlay.classList.add('hidden');
@@ -263,12 +284,16 @@
         btnRecalibrate.addEventListener('click', () => {
             baseAlpha = rawAlpha;
             baseBeta = rawBeta;
+            baseGamma = rawGamma;
             
             // Reset to exact center immediately to prevent flying cursor
             targetX = centerX;
             targetY = centerY;
+            targetRotation = 0;
+
             smoothedX = centerX;
             smoothedY = centerY;
+            smoothedRotation = 0;
         });
 
         // Request Permissions (Required for iOS 13+)

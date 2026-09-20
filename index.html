@@ -37,11 +37,25 @@
             font-size: 1.25rem;
             font-weight: 600;
             font-variant-numeric: tabular-nums;
-            color: #4ade80; /* Tailwind green-400 */
+            color: #4ade80;
         }
-        .axis-x { color: #f87171; } /* red */
-        .axis-y { color: #60a5fa; } /* blue */
-        .axis-z { color: #4ade80; } /* green */
+        .axis-x { color: #f87171; }
+        .axis-y { color: #60a5fa; }
+        .axis-z { color: #4ade80; }
+        
+        /* 스크롤바 커스텀 */
+        textarea::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: #1a1a1a; 
+            border-radius: 4px;
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #444; 
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body class="min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col items-center">
@@ -85,7 +99,6 @@
                     <div class="value-data axis-y" id="ori-gamma">0.00°</div>
                 </div>
             </div>
-            <p class="text-xs text-gray-500 mt-3 text-center">나침반 방향 및 기기 기울기</p>
         </section>
 
         <!-- 회전 속도 (Rotation Rate) -->
@@ -108,7 +121,6 @@
                     <div class="value-data axis-y" id="rot-gamma">0.00</div>
                 </div>
             </div>
-            <p class="text-xs text-gray-500 mt-3 text-center">각 축을 중심으로 한 회전 속도 (deg/s)</p>
         </section>
 
         <!-- 가속도 (Acceleration - 중력 제외) -->
@@ -131,7 +143,6 @@
                     <div class="value-data axis-z" id="acc-z">0.00</div>
                 </div>
             </div>
-            <p class="text-xs text-gray-500 mt-3 text-center">중력을 제외한 순수 가속도 (m/s²)</p>
         </section>
 
         <!-- 가속도 (Acceleration - 중력 포함) -->
@@ -154,11 +165,10 @@
                     <div class="value-data axis-z" id="acc-grav-z">0.00</div>
                 </div>
             </div>
-            <p class="text-xs text-gray-500 mt-3 text-center">기기가 받는 전체 가속도 (m/s²)</p>
         </section>
 
         <!-- 화면 방향 (Screen Orientation) -->
-        <section class="sensor-card rounded-xl p-5 md:col-span-2">
+        <section class="sensor-card rounded-xl p-5 md:col-span-2 hidden md:block">
             <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
                 <i class="fa-solid fa-tablet-screen-button text-cyan-400"></i>
                 <h2 class="text-lg font-semibold">화면 방향 (Screen API)</h2>
@@ -173,7 +183,34 @@
                     <div class="value-data text-cyan-400 text-lg sm:text-xl truncate px-2" id="screen-type">portrait-primary</div>
                 </div>
             </div>
-            <p class="text-xs text-gray-500 mt-3 text-center">기기를 가로/세로로 돌릴 때 변하는 값</p>
+        </section>
+
+        <!-- ⭐️ 3초 데이터 기록 섹션 추가 ⭐️ -->
+        <section class="sensor-card rounded-xl p-5 md:col-span-2">
+            <div class="flex items-center justify-between mb-4 border-b border-gray-700 pb-2">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-stopwatch text-green-400"></i>
+                    <h2 class="text-lg font-semibold">3초 프레임 기록기</h2>
+                </div>
+                <button id="btn-record" class="bg-green-600 hover:bg-green-500 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-lg">
+                    <i class="fa-solid fa-play"></i> 기록 시작
+                </button>
+            </div>
+            
+            <!-- 상태 표시 바 -->
+            <div id="record-progress-container" class="w-full bg-gray-700 h-2 rounded-full mb-3 hidden">
+                <div id="record-progress-bar" class="bg-green-400 h-2 rounded-full transition-all duration-75" style="width: 0%"></div>
+            </div>
+            <div id="record-status" class="text-xs text-yellow-400 mb-3 hidden text-center animate-pulse">
+                기록 중입니다... 기기를 움직여보세요!
+            </div>
+
+            <!-- 출력 영역 -->
+            <textarea id="record-output" class="w-full h-48 bg-[#0a0a0a] text-[10px] sm:text-xs text-gray-300 p-3 rounded-lg border border-gray-700 focus:outline-none focus:border-green-500 font-mono whitespace-pre text-nowrap overflow-x-auto" readonly placeholder="기록된 데이터가 CSV 형식으로 출력됩니다.&#10;엑셀에 붙여넣기 편리합니다."></textarea>
+            
+            <button id="btn-copy" class="w-full mt-3 bg-gray-700 hover:bg-gray-600 text-white text-sm py-2 rounded-lg transition-colors hidden">
+                <i class="fa-regular fa-copy"></i> 데이터 복사하기
+            </button>
         </section>
 
     </main>
@@ -181,22 +218,20 @@
     <script>
         // DOM Elements
         const els = {
-            oriAlpha: document.getElementById('ori-alpha'),
-            oriBeta: document.getElementById('ori-beta'),
-            oriGamma: document.getElementById('ori-gamma'),
-            rotAlpha: document.getElementById('rot-alpha'),
-            rotBeta: document.getElementById('rot-beta'),
-            rotGamma: document.getElementById('rot-gamma'),
-            accX: document.getElementById('acc-x'),
-            accY: document.getElementById('acc-y'),
-            accZ: document.getElementById('acc-z'),
-            accGravX: document.getElementById('acc-grav-x'),
-            accGravY: document.getElementById('acc-grav-y'),
-            accGravZ: document.getElementById('acc-grav-z'),
-            screenAngle: document.getElementById('screen-angle'),
-            screenType: document.getElementById('screen-type'),
-            permContainer: document.getElementById('permission-container'),
-            btnPerm: document.getElementById('btn-request-permission')
+            oriAlpha: document.getElementById('ori-alpha'), oriBeta: document.getElementById('ori-beta'), oriGamma: document.getElementById('ori-gamma'),
+            rotAlpha: document.getElementById('rot-alpha'), rotBeta: document.getElementById('rot-beta'), rotGamma: document.getElementById('rot-gamma'),
+            accX: document.getElementById('acc-x'), accY: document.getElementById('acc-y'), accZ: document.getElementById('acc-z'),
+            accGravX: document.getElementById('acc-grav-x'), accGravY: document.getElementById('acc-grav-y'), accGravZ: document.getElementById('acc-grav-z'),
+            screenAngle: document.getElementById('screen-angle'), screenType: document.getElementById('screen-type'),
+            permContainer: document.getElementById('permission-container'), btnPerm: document.getElementById('btn-request-permission'),
+            
+            // 기록 관련 DOM
+            btnRecord: document.getElementById('btn-record'),
+            recordStatus: document.getElementById('record-status'),
+            recordProgressContainer: document.getElementById('record-progress-container'),
+            recordProgressBar: document.getElementById('record-progress-bar'),
+            recordOutput: document.getElementById('record-output'),
+            btnCopy: document.getElementById('btn-copy')
         };
 
         // Format number helper
@@ -205,67 +240,178 @@
             return `${Number(num).toFixed(2)}${suffix}`;
         };
 
-        // Update Screen Orientation
+        // ⭐️ 최신 센서 데이터를 임시로 담아둘 전역 객체 (프레임 기록용)
+        let latestData = {
+            ori: { alpha: 0, beta: 0, gamma: 0 },
+            rot: { alpha: 0, beta: 0, gamma: 0 },
+            acc: { x: 0, y: 0, z: 0 },
+            accGrav: { x: 0, y: 0, z: 0 }
+        };
+
         function updateScreenOrientation() {
             if (window.screen && window.screen.orientation) {
                 els.screenAngle.textContent = `${window.screen.orientation.angle}°`;
                 els.screenType.textContent = window.screen.orientation.type;
             } else if (window.orientation !== undefined) {
-                // Fallback for older browsers
                 els.screenAngle.textContent = `${window.orientation}°`;
                 els.screenType.textContent = Math.abs(window.orientation) === 90 ? 'landscape' : 'portrait';
             }
         }
 
-        // Handle Device Orientation (Gyroscope / Compass)
         function handleOrientation(event) {
             els.oriAlpha.textContent = fmt(event.alpha, '°');
             els.oriBeta.textContent = fmt(event.beta, '°');
             els.oriGamma.textContent = fmt(event.gamma, '°');
+
+            // 기록용 데이터 업데이트
+            latestData.ori.alpha = event.alpha || 0;
+            latestData.ori.beta = event.beta || 0;
+            latestData.ori.gamma = event.gamma || 0;
         }
 
-        // Handle Device Motion (Accelerometer / Gyroscope rotation rate)
         function handleMotion(event) {
-            // Rotation Rate
             if (event.rotationRate) {
                 els.rotAlpha.textContent = fmt(event.rotationRate.alpha);
                 els.rotBeta.textContent = fmt(event.rotationRate.beta);
                 els.rotGamma.textContent = fmt(event.rotationRate.gamma);
+                
+                latestData.rot.alpha = event.rotationRate.alpha || 0;
+                latestData.rot.beta = event.rotationRate.beta || 0;
+                latestData.rot.gamma = event.rotationRate.gamma || 0;
             }
-            
-            // Acceleration (without gravity)
             if (event.acceleration) {
                 els.accX.textContent = fmt(event.acceleration.x);
                 els.accY.textContent = fmt(event.acceleration.y);
                 els.accZ.textContent = fmt(event.acceleration.z);
-            }
 
-            // Acceleration (with gravity)
+                latestData.acc.x = event.acceleration.x || 0;
+                latestData.acc.y = event.acceleration.y || 0;
+                latestData.acc.z = event.acceleration.z || 0;
+            }
             if (event.accelerationIncludingGravity) {
                 els.accGravX.textContent = fmt(event.accelerationIncludingGravity.x);
                 els.accGravY.textContent = fmt(event.accelerationIncludingGravity.y);
                 els.accGravZ.textContent = fmt(event.accelerationIncludingGravity.z);
+
+                latestData.accGrav.x = event.accelerationIncludingGravity.x || 0;
+                latestData.accGrav.y = event.accelerationIncludingGravity.y || 0;
+                latestData.accGrav.z = event.accelerationIncludingGravity.z || 0;
             }
         }
 
-        // Check for iOS 13+ permission requirements
+        // ==========================================
+        // ⭐️ 3초 프레임 기록 기능 로직 
+        // ==========================================
+        let isRecording = false;
+        let recordStartTime = 0;
+        let recordedFrames = [];
+        let animationFrameId = null;
+
+        function startRecording() {
+            if (isRecording) return;
+            
+            // UI 초기화
+            isRecording = true;
+            recordedFrames = [];
+            recordStartTime = 0; // requestAnimationFrame에서 첫 타임스탬프를 잡기 위해 0으로 둠
+            
+            els.recordOutput.value = "";
+            els.btnCopy.classList.add('hidden');
+            els.btnRecord.disabled = true;
+            els.btnRecord.classList.replace('bg-green-600', 'bg-gray-600');
+            els.btnRecord.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 기록중...';
+            
+            els.recordStatus.classList.remove('hidden');
+            els.recordProgressContainer.classList.remove('hidden');
+            els.recordProgressBar.style.width = '0%';
+
+            // CSV 헤더 푸시
+            recordedFrames.push("Time(ms),Ori_Alpha,Ori_Beta,Ori_Gamma,Rot_Alpha,Rot_Beta,Rot_Gamma,Acc_X,Acc_Y,Acc_Z,AccGrav_X,AccGrav_Y,AccGrav_Z");
+
+            // 프레임 루프 시작
+            animationFrameId = requestAnimationFrame(recordFrame);
+        }
+
+        function recordFrame(timestamp) {
+            if (!isRecording) return;
+            
+            // 첫 프레임 시간 기록
+            if (!recordStartTime) recordStartTime = timestamp;
+            
+            const elapsed = timestamp - recordStartTime;
+            
+            // 프로그레스 바 업데이트
+            const progressPercent = Math.min((elapsed / 3000) * 100, 100);
+            els.recordProgressBar.style.width = `${progressPercent}%`;
+
+            if (elapsed <= 3000) {
+                // 현재 프레임의 데이터를 CSV 포맷 문자열로 변환하여 저장
+                const frameData = [
+                    elapsed.toFixed(0),
+                    fmt(latestData.ori.alpha), fmt(latestData.ori.beta), fmt(latestData.ori.gamma),
+                    fmt(latestData.rot.alpha), fmt(latestData.rot.beta), fmt(latestData.rot.gamma),
+                    fmt(latestData.acc.x), fmt(latestData.acc.y), fmt(latestData.acc.z),
+                    fmt(latestData.accGrav.x), fmt(latestData.accGrav.y), fmt(latestData.accGrav.z)
+                ].join(",");
+                
+                recordedFrames.push(frameData);
+                
+                // 다음 프레임 예약
+                animationFrameId = requestAnimationFrame(recordFrame);
+            } else {
+                // 3초 경과 시 종료
+                stopRecording();
+            }
+        }
+
+        function stopRecording() {
+            isRecording = false;
+            cancelAnimationFrame(animationFrameId);
+            
+            // UI 복구
+            els.btnRecord.disabled = false;
+            els.btnRecord.classList.replace('bg-gray-600', 'bg-green-600');
+            els.btnRecord.innerHTML = '<i class="fa-solid fa-play"></i> 다시 기록하기';
+            els.recordStatus.classList.add('hidden');
+            els.recordProgressContainer.classList.add('hidden');
+            els.btnCopy.classList.remove('hidden');
+            
+            // 결과 출력
+            const resultText = recordedFrames.join("\n");
+            els.recordOutput.value = resultText;
+            
+            // 총 프레임 수 알림 (선택사항)
+            // console.log(`기록 완료: 총 ${recordedFrames.length - 1} 프레임 캡처됨`);
+        }
+
+        // 기록 버튼 이벤트
+        els.btnRecord.addEventListener('click', startRecording);
+
+        // 복사 버튼 이벤트
+        els.btnCopy.addEventListener('click', () => {
+            els.recordOutput.select();
+            document.execCommand('copy');
+            els.btnCopy.innerHTML = '<i class="fa-solid fa-check"></i> 복사 완료!';
+            setTimeout(() => {
+                els.btnCopy.innerHTML = '<i class="fa-regular fa-copy"></i> 데이터 복사하기';
+            }, 2000);
+        });
+        // ==========================================
+
         function checkPermissions() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 els.permContainer.classList.remove('hidden');
             } else {
-                // If permission is not explicitly required via user action (Android/older iOS), start listening immediately
                 startSensors();
             }
         }
 
-        // Start listening to sensors
         function startSensors() {
             window.addEventListener('deviceorientation', handleOrientation);
             window.addEventListener('devicemotion', handleMotion);
             els.permContainer.classList.add('hidden');
         }
 
-        // Request Permission Button Click
         els.btnPerm.addEventListener('click', () => {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
@@ -283,14 +429,12 @@
             }
         });
 
-        // Initialize screen orientation listeners
         if (window.screen && window.screen.orientation) {
             window.screen.orientation.addEventListener('change', updateScreenOrientation);
         } else {
             window.addEventListener('orientationchange', updateScreenOrientation);
         }
 
-        // Setup on load
         window.onload = () => {
             updateScreenOrientation();
             checkPermissions();

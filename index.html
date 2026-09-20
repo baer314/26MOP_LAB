@@ -3,240 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Advanced Air Mouse</title>
+    <title>조이콘 스타일 에어 마우스</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    
     <style>
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: #0f172a; /* Slate 900 */
-            color: #f8fafc;
-            overscroll-behavior: none;
-            touch-action: none; 
-            margin: 0;
+            background-color: #121212;
+            color: white;
             overflow: hidden;
+            touch-action: none; /* 터치 스크롤 방지 */
         }
-
-        /* 
-         * 막대 모양의 형광 커서 스타일 
-         * width: 8px, height: 60px 및 형광 효과 적용
-         */
+        
+        /* 조준선 커서 디자인 */
         #cursor {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 8px;
-            height: 60px;
-            background-color: #00ffcc;
-            border-radius: 4px;
-            box-shadow: 0 0 15px rgba(0, 255, 204, 0.9), 0 0 5px rgba(255, 255, 255, 0.8);
-            transform-origin: center center;
+            width: 40px;
+            height: 40px;
+            border: 2px solid #00ff00;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
             pointer-events: none;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
             z-index: 50;
-            will-change: transform;
+            transition: transform 0.05s linear;
         }
+        
+        #cursor::before, #cursor::after {
+            content: '';
+            position: absolute;
+            background-color: #00ff00;
+        }
+        
+        /* 십자선 */
+        #cursor::before { top: 50%; left: -10px; right: -10px; height: 2px; transform: translateY(-50%); }
+        #cursor::after { left: 50%; top: -10px; bottom: -10px; width: 2px; transform: translateX(-50%); }
 
-        .glass-panel {
-            background: rgba(30, 41, 59, 0.8);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+        .btn-press {
+            transition: transform 0.1s, filter 0.1s;
+        }
+        .btn-press:active {
+            transform: scale(0.95);
+            filter: brightness(0.8);
         }
     </style>
 </head>
-<body class="w-screen h-screen relative flex flex-col justify-end">
+<body class="w-screen h-screen flex flex-col items-center justify-center relative">
 
-    <!-- The Virtual Cursor -->
-    <div id="cursor" style="display: none;"></div>
+    <!-- 조준선 커서 -->
+    <div id="cursor" style="left: 50%; top: 50%;"></div>
 
-    <!-- Start Overlay -->
-    <div id="overlay" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/90 backdrop-blur-md px-4">
-        <div class="glass-panel p-8 rounded-2xl max-w-sm w-full text-center shadow-2xl">
-            <i class="fa-solid fa-mobile-screen text-5xl text-[#00ffcc] mb-4 drop-shadow-[0_0_10px_rgba(0,255,204,0.5)]"></i>
-            <h1 class="text-2xl font-bold mb-2">어드밴스드 에어 마우스</h1>
-            <p class="text-sm text-slate-400 mb-6">
-                기기를 들고 시작 버튼을 누르세요.<br>방어 로직과 데드존이 적용되어 더욱 안정적입니다.
-            </p>
-            <button id="btn-start" class="w-full bg-[#00ffcc] hover:bg-[#00e6b8] text-slate-900 font-bold py-3 px-6 rounded-xl transition-all shadow-[0_0_15px_rgba(0,255,204,0.4)] active:scale-95">
-                <i class="fa-solid fa-play mr-2"></i> 센서 시작
-            </button>
-            <div id="perm-msg" class="mt-4 text-xs text-red-400 hidden">
-                권한 요청이 거부되었거나 센서를 사용할 수 없습니다.
-            </div>
-        </div>
-    </div>
-
-    <!-- Reset Button (Bottom Center) -->
-    <div id="control-panel" class="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-40 hidden">
-        <button id="btn-reset" class="glass-panel text-white font-semibold py-3 px-8 rounded-full shadow-lg flex items-center gap-2 hover:bg-slate-700/80 active:scale-95 transition-all border border-slate-500/50">
-            <i class="fa-solid fa-crosshairs text-[#00ffcc]"></i> 영점 초기화
+    <div id="start-screen" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-40 backdrop-blur-sm">
+        <h1 class="text-3xl font-bold text-green-400 mb-4"><i class="fa-solid fa-gamepad"></i> 조이콘 에어 마우스</h1>
+        <p class="text-gray-300 text-center mb-8 text-sm px-6">
+            기기를 바닥과 수평으로 들고(리모컨처럼) 시작하세요.<br>
+            자이로스코프(회전 속도)를 이용해 커서가 부드럽게 이동합니다.
+        </p>
+        <button id="btn-start" class="btn-press bg-green-500 text-black font-bold text-xl py-4 px-10 rounded-full shadow-[0_0_20px_rgba(0,255,0,0.4)]">
+            시작하기 (권한 요청)
         </button>
     </div>
 
+    <!-- UI 오버레이 -->
+    <div class="absolute bottom-10 left-0 right-0 flex justify-center gap-6 z-30">
+        <button id="btn-recenter" class="btn-press bg-gray-800 border-2 border-gray-600 text-white rounded-full w-20 h-20 flex flex-col items-center justify-center shadow-lg">
+            <i class="fa-solid fa-crosshairs text-2xl mb-1 text-blue-400"></i>
+            <span class="text-[10px]">영점(Y)</span>
+        </button>
+        
+        <button class="btn-press bg-green-600 border-2 border-green-500 text-white rounded-full w-20 h-20 flex flex-col items-center justify-center shadow-lg">
+            <i class="fa-solid fa-fire text-2xl mb-1"></i>
+            <span class="text-[10px]">클릭(A)</span>
+        </button>
+    </div>
+
+    <!-- 디버그 정보 -->
+    <div class="absolute top-4 left-4 text-xs font-mono text-gray-500 z-10 pointer-events-none">
+        <div id="debug-yaw">Yaw (Left/Right): 0.00</div>
+        <div id="debug-pitch">Pitch (Up/Down): 0.00</div>
+    </div>
+
     <script>
-        // DOM Elements
-        const elCursor = document.getElementById('cursor');
-        const elOverlay = document.getElementById('overlay');
-        const elControlPanel = document.getElementById('control-panel');
+        const cursor = document.getElementById('cursor');
         const btnStart = document.getElementById('btn-start');
-        const btnReset = document.getElementById('btn-reset');
-        const msgPerm = document.getElementById('perm-msg');
-
-        // State Variables
-        let isTracking = false;
+        const startScreen = document.getElementById('start-screen');
+        const btnRecenter = document.getElementById('btn-recenter');
         
-        // 이전 프레임 데이터 (변화량 추적용)
-        let prevAlpha = null;
-        let prevBeta = null;
-        let prevGamma = null;
-
-        // 중앙 좌표 계산
-        let centerX = window.innerWidth / 2;
-        let centerY = window.innerHeight / 2;
-        
-        // 목표 위치 및 회전 (Target)
-        let targetX = centerX;
-        let targetY = centerY;
-        let targetRotation = 0;
-        
-        // 부드럽게 필터링된 최종 출력값 (Smoothed)
-        let smoothedX = centerX;
-        let smoothedY = centerY;
-        let smoothedRotation = 0;
-
-        // 설정값 (Settings)
-        const SENSITIVITY_POS = 15.0; // 이동 민감도
-        const SENSITIVITY_ROT = 2.0;  // 회전 민감도
-        const DEADZONE = 0.05;        // 미세 떨림 무시(데드존) 기준각도
-        
-        // 로우패스 필터 강도 (Low = 부드러움, High = 빠름)
-        const LPF_POS = 0.15; // 위치는 반응성 있게
-        const LPF_ROT = 0.05; // 회전은 더 안정적이고 묵직하게
-
+        // 화면 크기
+        let screenW = window.innerWidth;
+        let screenH = window.innerHeight;
         window.addEventListener('resize', () => {
-            centerX = window.innerWidth / 2;
-            centerY = window.innerHeight / 2;
+            screenW = window.innerWidth;
+            screenH = window.innerHeight;
         });
 
-        function handleOrientation(event) {
-            let rawAlpha = event.alpha;
-            let rawBeta = event.beta;
-            let rawGamma = event.gamma;
+        // 커서 위치 (초기값 화면 중앙)
+        let cursorX = screenW / 2;
+        let cursorY = screenH / 2;
 
-            if (rawAlpha === null || rawBeta === null || rawGamma === null) return;
+        // 조이콘 세팅값
+        const SENSITIVITY = 18.0; // 감도 (클수록 빠름)
+        const DEADZONE = 0.8;     // 데드존 (초당 회전 각도가 이 값 이하면 무시하여 수전증/드리프트 방지)
 
-            // 최초 실행 시 이전 값을 현재 값으로 세팅 후 종료 (Delta 계산을 위해)
-            if (prevAlpha === null) {
-                prevAlpha = rawAlpha;
-                prevBeta = rawBeta;
-                prevGamma = rawGamma;
-                return;
-            }
+        let lastTime = 0;
 
-            // 1. 변화량(Delta) 계산
-            let dAlpha = rawAlpha - prevAlpha;
-            let dBeta = rawBeta - prevBeta;
-            let dGamma = rawGamma - prevGamma;
+        function handleMotion(event) {
+            const rr = event.rotationRate;
+            if (!rr || rr.alpha === null) return;
 
-            // 2. Alpha Wrap-around (0 <-> 360) 방어 로직
-            if (dAlpha > 180) dAlpha -= 360;
-            else if (dAlpha < -180) dAlpha += 360;
+            // 시간 차이(Delta Time) 계산
+            const now = performance.now();
+            if (lastTime === 0) { lastTime = now; return; }
+            const dt = (now - lastTime) / 1000; // 초 단위 변환
+            lastTime = now;
 
-            // 3. Extreme Jump Rejection (짐벌 락, 경계값 튀김 방어)
-            // 단일 프레임 내에서 40도 이상 값이 튀면 비정상적인 센서 노이즈나 Flip으로 간주하고 버림
-            if (Math.abs(dBeta) > 40 || Math.abs(dGamma) > 40 || Math.abs(dAlpha) > 40) {
-                // 값은 튀었지만, 다음 프레임에서의 정상적인 Delta 계산을 위해 기준점은 갱신해줍니다.
-                prevAlpha = rawAlpha;
-                prevBeta = rawBeta;
-                prevGamma = rawGamma;
-                return; 
-            }
+            // 기기를 수평으로 들고(리모컨처럼) 앞을 가리킬 때:
+            // Alpha: 좌우 회전 (Yaw)
+            // Beta: 위아래 고개 끄덕임 (Pitch)
+            let yawRate = rr.alpha; 
+            let pitchRate = rr.beta;
 
-            // 4. Deadzone (미세 손떨림 방지)
-            if (Math.abs(dAlpha) < DEADZONE) dAlpha = 0;
-            if (Math.abs(dBeta) < DEADZONE) dBeta = 0;
-            if (Math.abs(dGamma) < DEADZONE) dGamma = 0;
+            // 데드존 적용 (수치 미만의 미세한 떨림은 무시)
+            if (Math.abs(yawRate) < DEADZONE) yawRate = 0;
+            if (Math.abs(pitchRate) < DEADZONE) pitchRate = 0;
 
-            // 5. Target 업데이트 로직 적용
-            // 조건: Alpha 증가 시 왼쪽 이동 (X 감소)
-            targetX -= dAlpha * SENSITIVITY_POS;
-            
-            // 조건: Beta 증가 시 위쪽 이동 (화면 Y=0이 위쪽이므로 Y 감소)
-            targetY -= dBeta * SENSITIVITY_POS;
-            
-            // 조건: Gamma 변화량에 따라 회전
-            targetRotation += dGamma * SENSITIVITY_ROT;
+            // 디버그 텍스트 업데이트
+            document.getElementById('debug-yaw').textContent = `Yaw: ${yawRate.toFixed(2)}`;
+            document.getElementById('debug-pitch').textContent = `Pitch: ${pitchRate.toFixed(2)}`;
 
-            // 화면 밖으로 나가지 않도록 Clamp
-            targetX = Math.max(0, Math.min(window.innerWidth, targetX));
-            targetY = Math.max(0, Math.min(window.innerHeight, targetY));
+            // 속도 * 시간 * 감도 = 이동 거리(Delta)
+            // 방향 반전이 필요하면 여기의 + / - 기호를 바꿉니다.
+            const dx = yawRate * dt * SENSITIVITY;
+            const dy = pitchRate * dt * SENSITIVITY;
 
-            // 다음 프레임을 위해 이전 값 갱신
-            prevAlpha = rawAlpha;
-            prevBeta = rawBeta;
-            prevGamma = rawGamma;
+            cursorX -= dx; // 좌우
+            cursorY -= dy; // 상하
+
+            // 화면 밖으로 나가지 않도록 제한 (Clamping)
+            cursorX = Math.max(20, Math.min(screenW - 20, cursorX));
+            cursorY = Math.max(20, Math.min(screenH - 20, cursorY));
         }
 
-        function loop() {
-            if (isTracking) {
-                // 독립적인 로우패스 필터 적용 (위치와 회전 계수를 다르게 설정)
-                smoothedX += LPF_POS * (targetX - smoothedX);
-                smoothedY += LPF_POS * (targetY - smoothedY);
-                smoothedRotation += LPF_ROT * (targetRotation - smoothedRotation);
-
-                // 커서 DOM 업데이트
-                elCursor.style.transform = `translate(${smoothedX}px, ${smoothedY}px) translate(-50%, -50%) rotate(${smoothedRotation}deg)`;
-            }
-            requestAnimationFrame(loop);
+        // 화면 업데이트 (부드러운 렌더링)
+        function updateDisplay() {
+            cursor.style.left = `${cursorX}px`;
+            cursor.style.top = `${cursorY}px`;
+            requestAnimationFrame(updateDisplay);
         }
 
-        function startTracking() {
-            window.addEventListener('deviceorientation', handleOrientation);
+        // 영점 조준 함수 (화면 중앙으로 리셋)
+        function recenter() {
+            cursorX = screenW / 2;
+            cursorY = screenH / 2;
             
-            // 초기 위치 중앙으로 세팅
-            targetX = smoothedX = centerX;
-            targetY = smoothedY = centerY;
-            targetRotation = smoothedRotation = 0;
-            
-            isTracking = true;
-            elOverlay.classList.add('hidden');
-            elControlPanel.classList.remove('hidden');
-            elCursor.style.display = 'block';
-            
-            requestAnimationFrame(loop);
+            // 시각적 피드백 (깜빡임 효과)
+            cursor.style.transform = 'translate(-50%, -50%) scale(1.5)';
+            cursor.style.borderColor = 'white';
+            setTimeout(() => {
+                cursor.style.transform = 'translate(-50%, -50%) scale(1)';
+                cursor.style.borderColor = '#00ff00';
+            }, 100);
         }
 
-        // 영점 초기화 로직 (화면 중앙 & 세로 정렬)
-        btnReset.addEventListener('click', () => {
-            targetX = centerX;
-            targetY = centerY;
-            targetRotation = 0;
-            
-            // 필터를 거치지 않고 즉시 리셋되도록 smoothed 값도 강제 일치시킴
-            smoothedX = centerX;
-            smoothedY = centerY;
-            smoothedRotation = 0;
-        });
+        btnRecenter.addEventListener('click', recenter);
 
-        // 권한 요청 로직 (iOS 13+ 대응)
-        btnStart.addEventListener('click', () => {
-            msgPerm.classList.add('hidden');
-            
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            startTracking();
-                        } else {
-                            msgPerm.classList.remove('hidden');
-                        }
-                    })
-                    .catch(() => msgPerm.classList.remove('hidden'));
+        // 시작 버튼 (권한 요청 및 이벤트 등록)
+        btnStart.addEventListener('click', async () => {
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission === 'granted') {
+                        initSensors();
+                    } else {
+                        alert("센서 권한이 거부되었습니다.");
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
             } else {
-                startTracking(); // Android 등 권한 요청이 필요 없는 환경
+                initSensors();
             }
         });
+
+        function initSensors() {
+            startScreen.style.display = 'none';
+            lastTime = performance.now();
+            
+            // Orientation 대신 Motion(가속도/자이로) 이벤트 사용
+            window.addEventListener('devicemotion', handleMotion);
+            
+            // 렌더링 루프 시작
+            updateDisplay();
+        }
     </script>
 </body>
 </html>

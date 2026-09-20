@@ -206,7 +206,7 @@
 
             // 3. Map to Screen Coordinates
             // Requirement: alpha increases -> right (X increases)
-            targetX = centerX + (deltaAlpha * sensitivity);
+            targetX = centerX - (deltaAlpha * sensitivity);
             
             // Requirement: beta increases -> up (Y decreases, since screen 0 is at top)
             targetY = centerY - (deltaBeta * sensitivity);

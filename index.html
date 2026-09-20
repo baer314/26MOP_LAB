@@ -2,247 +2,277 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D 원기둥 모션 제어</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gyro Cylinder Attack</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
     <style>
-        body { margin: 0; overflow: hidden; background-color: #111; color: white; font-family: 'Inter', sans-serif; }
-        canvas { display: block; width: 100%; height: 100%; }
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; box-sizing: border-box; }
-        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; pointer-events: auto; }
-        .data-panel { background: rgba(255,255,255,0.1); backdrop-filter: blur(5px); padding: 15px; border-radius: 12px; font-size: 14px; pointer-events: auto; max-width: 300px; }
+        @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=JetBrains+Mono:wght@700&display=swap');
+
+        body {
+            background-color: #0f172a; /* Slate 900 */
+            color: white;
+            overflow: hidden;
+            touch-action: none; /* 스크롤 방지 */
+        }
+
+        /* 3D 씬 및 원기둥 설정 */
+        .scene {
+            width: 200px;
+            height: 200px;
+            perspective: 800px;
+            margin: auto;
+        }
+
+        .cylinder {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            /* 초기 상태 */
+            transform: rotateX(0deg); 
+        }
+
+        /* 8각 기둥의 각 면 (너비 200px, 높이 100px) */
+        .face {
+            position: absolute;
+            top: 50px; /* 200px 중앙에 100px 높이 배치 */
+            left: 0;
+            width: 200px;
+            height: 100px;
+            background: linear-gradient(135deg, rgba(14, 165, 233, 0.8), rgba(30, 58, 138, 0.9));
+            border: 2px solid rgba(56, 189, 248, 0.5);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Black Ops One', cursive;
+            font-size: 24px;
+            color: rgba(255, 255, 255, 0.7);
+            backface-visibility: hidden;
+        }
+
+        /* 
+         * 8각 기둥 각도 계산 (360 / 8 = 45도)
+         * 반지름(Z축 이동) 계산: (높이 100 / 2) / Math.tan(22.5도) ≈ 120.7px
+         */
+        .face:nth-child(1) { transform: rotateX(0deg) translateZ(121px); }
+        .face:nth-child(2) { transform: rotateX(45deg) translateZ(121px); }
+        .face:nth-child(3) { transform: rotateX(90deg) translateZ(121px); }
+        .face:nth-child(4) { transform: rotateX(135deg) translateZ(121px); }
+        .face:nth-child(5) { transform: rotateX(180deg) translateZ(121px); }
+        .face:nth-child(6) { transform: rotateX(225deg) translateZ(121px); }
+        .face:nth-child(7) { transform: rotateX(270deg) translateZ(121px); }
+        .face:nth-child(8) { transform: rotateX(315deg) translateZ(121px); }
+
+        /* 공격 시 이펙트 애니메이션 */
+        @keyframes flashEffect {
+            0% { background-color: rgba(220, 38, 38, 0.8); } /* Red 600 */
+            100% { background-color: transparent; }
+        }
+        .flash-active {
+            animation: flashEffect 0.5s ease-out forwards;
+        }
+
+        @keyframes textPop {
+            0% { transform: scale(0.5); opacity: 0; }
+            30% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+        .attack-text {
+            font-family: 'Black Ops One', cursive;
+            text-shadow: 0 0 20px rgba(220, 38, 38, 0.8);
+            opacity: 0;
+        }
+        .attack-text-active {
+            animation: textPop 0.5s ease-out forwards;
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
     </style>
 </head>
-<body>
+<body class="flex flex-col h-screen w-screen justify-center items-center relative">
 
-    <div id="start-screen">
-        <h1 class="text-2xl font-bold mb-4 text-center">모션 센서 3D 검 제어</h1>
-        <p class="text-sm text-gray-300 mb-8 text-center max-w-xs">
-            스마트폰을 휘둘러 3D 원기둥을 제어해보세요.<br>
-            (iOS 기기는 센서 접근 권한이 필요합니다.)
-        </p>
-        <button id="start-btn" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-full font-semibold shadow-[0_0_15px_rgba(37,99,235,0.5)] transition-all">
-            센서 활성화 및 시작
-        </button>
+    <!-- 공격 화면 번쩍임 효과 레이어 -->
+    <div id="flash-overlay" class="absolute inset-0 pointer-events-none z-10 transition-colors"></div>
+
+    <!-- 거대한 공격 텍스트 -->
+    <div id="attack-text" class="absolute inset-0 flex items-center justify-center pointer-events-none z-20 attack-text">
+        <span class="text-7xl font-bold text-red-500 tracking-wider">ATTACK!</span>
     </div>
 
-    <div id="ui-layer">
-        <div class="data-panel shadow-lg border border-gray-700">
-            <h2 class="font-bold text-blue-400 mb-2">실시간 센서 상태</h2>
-            <div id="status-text" class="text-green-400 font-semibold mb-2">상태: 평온함 (LPF: 0.2)</div>
-            <div>Alpha (회전): <span id="val-alpha">0</span></div>
-            <div>Beta (기울기): <span id="val-beta">0</span></div>
-            <div class="mt-2 text-xs text-gray-400">
-                ※ 기기를 강하게 흔들면 방어 로직이 작동하여 포인터가 일시적으로 끈적해집니다.
+    <!-- 3D 씬 (중앙 원기둥) -->
+    <div class="scene z-0 mt-[-100px]">
+        <div class="cylinder" id="cylinder">
+            <div class="face">FACE 1</div>
+            <div class="face">FACE 2</div>
+            <div class="face">FACE 3</div>
+            <div class="face">FACE 4</div>
+            <div class="face">FACE 5</div>
+            <div class="face">FACE 6</div>
+            <div class="face">FACE 7</div>
+            <div class="face">FACE 8</div>
+        </div>
+    </div>
+
+    <!-- 하단 원격 측정(디버그) 패널 -->
+    <div class="absolute bottom-8 left-0 w-full px-6 z-30">
+        <div class="bg-slate-800/80 backdrop-blur-sm border border-slate-700 p-4 rounded-xl shadow-xl">
+            <h3 class="text-xs font-bold text-sky-400 mb-2 uppercase tracking-widest flex justify-between">
+                <span>Sensor Telemetry</span>
+                <span id="cooldown-indicator" class="w-2 h-2 rounded-full bg-green-500"></span>
+            </h3>
+            <div class="grid grid-cols-2 gap-4 mono text-sm">
+                <div>
+                    <p class="text-slate-400 text-xs">Tilt (Beta)</p>
+                    <p id="val-beta" class="text-white">0.00°</p>
+                </div>
+                <div>
+                    <p class="text-slate-400 text-xs">Swing Speed (Gamma)</p>
+                    <p id="val-gamma" class="text-white">0.00 °/s</p>
+                </div>
             </div>
+            <p class="text-[10px] text-slate-500 mt-3 text-center">폰을 뉘여서 앞뒤로 기울이거나(회전), 양옆으로 빠르게 흔들어(공격) 보세요.</p>
+        </div>
+    </div>
+
+    <!-- 초기 권한 요청 오버레이 (iOS 대응) -->
+    <div id="permission-overlay" class="absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6">
+        <div class="bg-slate-800 p-8 rounded-2xl shadow-2xl text-center max-w-sm border border-slate-700">
+            <div class="w-16 h-16 bg-sky-500/20 text-sky-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+            </div>
+            <h2 class="text-xl font-bold text-white mb-2">모션 센서 활성화</h2>
+            <p class="text-sm text-slate-400 mb-6">원기둥을 조작하고 공격 액션을 수행하려면 센서 접근 권한이 필요합니다.</p>
+            <button id="btn-start" class="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-lg shadow-sky-500/30">
+                시작하기
+            </button>
         </div>
     </div>
 
     <script>
-        // --- 1. 상태 변수 및 필터 설정 ---
-        const SENSITIVITY = 0.02;     // 회전 민감도 (라디안 단위 변환 보정)
-        const MAX_DELTA = 45;         // 방어 로직 1: 1프레임당 허용하는 최대 각도 변화 (노이즈 컷)
-        const NORMAL_LPF = 0.2;       // 평상시 부드러운 필터 가중치
-        const DEFENSE_LPF = 0.02;     // 강한 충격 시 튀는 것을 막는 끈적한 방어 가중치
+        // DOM 요소
+        const btnStart = document.getElementById('btn-start');
+        const overlay = document.getElementById('permission-overlay');
+        const cylinder = document.getElementById('cylinder');
         
-        let LPF_WEIGHT = NORMAL_LPF;  
-        
-        let prevAlpha = null;
-        let prevBeta = null;
-        let smoothedAlphaDelta = 0;
-        let smoothedBetaDelta = 0;
-
-        // 원기둥의 누적 회전값
-        let targetRotationX = 0;
-        let targetRotationY = 0;
-
-        // UI 엘리먼트
-        const valAlpha = document.getElementById('val-alpha');
         const valBeta = document.getElementById('val-beta');
-        const statusText = document.getElementById('status-text');
+        const valGamma = document.getElementById('val-gamma');
+        
+        const flashOverlay = document.getElementById('flash-overlay');
+        const attackText = document.getElementById('attack-text');
+        const cooldownIndicator = document.getElementById('cooldown-indicator');
 
-        // --- 2. Three.js 기본 씬 셋업 ---
-        const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x111111, 0.05);
+        // 상태 변수
+        let currentBeta = 0; // LERP 적용된 현재 각도
+        let targetBeta = 0;  // 센서가 읽은 목표 각도
+        
+        let isCooldown = false;
+        const ATTACK_THRESHOLD = 250; // 이 수치를 넘으면 공격 (원하는 민감도에 따라 조절)
+        const COOLDOWN_TIME = 500;    // 500ms
 
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 10;
-
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        document.body.appendChild(renderer.domElement);
-
-        // --- 3. 조명 (Lighting) ---
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(5, 10, 5);
-        scene.add(dirLight);
-        const pointLight = new THREE.PointLight(0x3b82f6, 1, 20); // 푸른빛
-        pointLight.position.set(-5, 0, 5);
-        scene.add(pointLight);
-
-        // --- 4. 긴 원기둥(스마트폰/검) 메쉬 생성 ---
-        const group = new THREE.Group(); // 회전 중심을 잡기 위한 그룹
-
-        // 본체 (긴 원기둥)
-        const geometry = new THREE.CylinderGeometry(0.3, 0.4, 6, 32);
-        const material = new THREE.MeshStandardMaterial({ 
-            color: 0x475569, 
-            metalness: 0.8, 
-            roughness: 0.2 
-        });
-        const cylinder = new THREE.Mesh(geometry, material);
-        cylinder.rotation.x = Math.PI / 2; // 누워있는 상태로 초기화 (앞으로 뻗은 형태)
-        group.add(cylinder);
-
-        // 앞/뒤를 구분하기 위한 발광(Glow) 코어 포인트 추가
-        const coreGeo = new THREE.BoxGeometry(0.4, 4, 0.5);
-        const coreMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6 });
-        const core = new THREE.Mesh(coreGeo, coreMat);
-        core.position.y = 0.2;
-        core.rotation.x = Math.PI / 2;
-        group.add(core);
-
-        scene.add(group);
-
-        // 배경 그리드 헬퍼 (공간감 제공)
-        const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
-        gridHelper.position.y = -3;
-        gridHelper.rotation.x = Math.PI / 8; // 약간 기울여서 보기 좋게
-        scene.add(gridHelper);
-
-        // --- 5. 모션 센서 로직 (DeviceOrientation & Motion) ---
-        function handleOrientation(event) {
-            let rawAlpha = event.alpha; // Z축 기준 회전 (0~360)
-            let rawBeta = event.beta;   // X축 기준 앞뒤 기울기 (-180~180)
-
-            if (rawAlpha === null || rawBeta === null) return;
-
-            if (prevAlpha === null || prevBeta === null) {
-                prevAlpha = rawAlpha;
-                prevBeta = rawBeta;
-                return;
-            }
-
-            // 변화량(Delta) 계산
-            let deltaAlpha = rawAlpha - prevAlpha;
-            let deltaBeta = rawBeta - prevBeta;
-
-            // [핵심 방어 로직 1] 짐벌 락(Wrap-around) 방어
-            // 359도에서 1도로 넘어갈 때 358도 회전했다고 착각하는 현상 억제
-            if (deltaAlpha > 180) deltaAlpha -= 360;
-            else if (deltaAlpha < -180) deltaAlpha += 360;
-
-            // 노이즈 컷: 물리적으로 불가능한 순간적인 각도 튐 무시
-            if (Math.abs(deltaAlpha) > MAX_DELTA || Math.abs(deltaBeta) > MAX_DELTA) {
-                prevAlpha = rawAlpha;
-                prevBeta = rawBeta;
-                return;
-            }
-
-            // [로우 패스 필터] 노이즈를 깎고 궤적을 부드럽게
-            smoothedAlphaDelta = (smoothedAlphaDelta * (1 - LPF_WEIGHT)) + (deltaAlpha * LPF_WEIGHT);
-            smoothedBetaDelta = (smoothedBetaDelta * (1 - LPF_WEIGHT)) + (deltaBeta * LPF_WEIGHT);
-
-            // [방향 매핑] 
-            // 알파(좌우 회전) 증가 -> Three.js Y축 회전 감소 (오른쪽으로 돌기 위함)
-            // 베타(상하 기울기) 증가 -> Three.js X축 회전 감소 (위로 들기 위함)
-            targetRotationY -= smoothedAlphaDelta * SENSITIVITY;
-            targetRotationX -= smoothedBetaDelta * SENSITIVITY;
-
-            // 회전 반경 제한 (너무 뒤집어지지 않게 Clamp 처리)
-            targetRotationX = Math.max(-Math.PI/2, Math.min(Math.PI/2, targetRotationX));
-
-            // 데이터 UI 업데이트
-            valAlpha.innerText = targetRotationY.toFixed(2);
-            valBeta.innerText = targetRotationX.toFixed(2);
-
-            prevAlpha = rawAlpha;
-            prevBeta = rawBeta;
-        }
-
-        function handleMotion(event) {
-            let accel = event.acceleration; // 중력을 제외한 순수 기기 가속도
-            if (!accel || accel.x === null) return;
-
-            // 가해지는 순수 물리적 힘(3축 벡터의 크기)
-            let shakeForce = Math.sqrt(accel.x**2 + accel.y**2 + accel.z**2);
-
-            // [핵심 방어 로직 2] 충격 감지 시 적응형 필터링
-            if (shakeForce > 4.0) {
-                LPF_WEIGHT = DEFENSE_LPF; // 방어 모드: 포인터 고정력 강화
-                statusText.innerText = "상태: 강한 흔들림 (방어 로직 가동!)";
-                statusText.className = "text-red-500 font-bold mb-2";
-                
-                // 시각적 피드백: 흔들림 감지 시 코어 색상 붉게 변경
-                coreMat.color.setHex(0xef4444);
-            } else {
-                LPF_WEIGHT = NORMAL_LPF;  // 정상 복귀
-                statusText.innerText = `상태: 평온함 (LPF: ${NORMAL_LPF})`;
-                statusText.className = "text-green-400 font-semibold mb-2";
-                
-                // 시각적 피드백 원래대로
-                coreMat.color.setHex(0x3b82f6);
-            }
-        }
-
-        // --- 6. 렌더링 애니메이션 루프 ---
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            // 목표 회전값으로 부드럽게 보간(Interpolation) 적용 - 시각적 부드러움 극대화
-            group.rotation.x += (targetRotationX - group.rotation.x) * 0.1;
-            group.rotation.y += (targetRotationY - group.rotation.y) * 0.1;
-
-            renderer.render(scene, camera);
-        }
-
-        // 브라우저 크기 변경 대응
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        // --- 7. 권한 요청 및 초기화 (iOS 13+ 대응) ---
-        document.getElementById('start-btn').addEventListener('click', () => {
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            startSensors();
-                        } else {
-                            alert('센서 접근 권한이 거부되었습니다.');
-                        }
-                    })
-                    .catch(console.error);
-            } else {
-                // 안드로이드 또는 권한 요청이 필요 없는 브라우저
-                startSensors();
+        // 권한 요청 및 시작
+        btnStart.addEventListener('click', async () => {
+            try {
+                // iOS 13 이상을 위한 권한 요청
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const orientationPerm = await DeviceOrientationEvent.requestPermission();
+                    const motionPerm = await DeviceMotionEvent.requestPermission();
+                    
+                    if (orientationPerm === 'granted' && motionPerm === 'granted') {
+                        startSensors();
+                    } else {
+                        alert("센서 권한이 거부되었습니다.");
+                    }
+                } else {
+                    // 안드로이드 및 기타 브라우저 (권한 요청 불필요)
+                    startSensors();
+                }
+            } catch (error) {
+                console.error("Permission error:", error);
+                startSensors(); // 에러 발생 시에도 일단 실행 시도
             }
         });
 
         function startSensors() {
-            document.getElementById('start-screen').style.display = 'none';
-            window.addEventListener('deviceorientation', handleOrientation);
-            window.addEventListener('devicemotion', handleMotion);
-            
-            // 데스크톱 디버깅용 마우스 대체 로직 (센서가 없을 경우)
-            let isDragging = false;
-            let prevX = 0; let prevY = 0;
-            window.addEventListener('mousedown', (e) => { isDragging = true; prevX = e.clientX; prevY = e.clientY; });
-            window.addEventListener('mouseup', () => { isDragging = false; });
-            window.addEventListener('mousemove', (e) => {
-                if(!isDragging) return;
-                let dx = e.clientX - prevX; let dy = e.clientY - prevY;
-                targetRotationY += dx * 0.01; targetRotationX += dy * 0.01;
-                prevX = e.clientX; prevY = e.clientY;
+            // 오버레이 숨기기
+            overlay.classList.add('hidden');
+
+            // 1. DeviceOrientation: 원기둥 회전용 각도(Beta) 수집
+            window.addEventListener('deviceorientation', (event) => {
+                if (event.beta !== null) {
+                    // Beta 값 (-180 ~ 180). 사용자가 보기 편하게 배율 조정 가능.
+                    targetBeta = event.beta;
+                    
+                    // 디스플레이 업데이트
+                    valBeta.textContent = targetBeta.toFixed(2) + "°";
+                }
             });
 
-            animate(); // 애니메이션 루프 시작
+            // 2. DeviceMotion: 공격 판정용 회전 속도(Gamma) 수집
+            window.addEventListener('devicemotion', (event) => {
+                if (event.rotationRate && event.rotationRate.gamma !== null) {
+                    const gammaSpeed = event.rotationRate.gamma;
+                    
+                    // 디스플레이 업데이트
+                    valGamma.textContent = gammaSpeed.toFixed(2) + " °/s";
+
+                    // 공격 판정 로직
+                    checkAttack(gammaSpeed);
+                }
+            });
+
+            // 애니메이션 루프 시작
+            requestAnimationFrame(animate);
+        }
+
+        // LERP 기반 부드러운 애니메이션 루프
+        function animate() {
+            // LERP 공식: 현재값 += (목표값 - 현재값) * 보간계수(0.0~1.0)
+            // 계수가 낮을수록 움직임이 무겁고 부드러워짐
+            currentBeta += (targetBeta - currentBeta) * 0.15;
+            
+            // X축을 기준으로 원기둥 회전 (스크롤 하듯 굴리기)
+            cylinder.style.transform = `rotateX(${-currentBeta}deg)`;
+
+            requestAnimationFrame(animate);
+        }
+
+        function checkAttack(speed) {
+            // 쿨타임 중이 아니고, 회전 속도의 절댓값이 임계치를 넘었을 때
+            if (!isCooldown && Math.abs(speed) > ATTACK_THRESHOLD) {
+                triggerAttackEffect();
+                
+                // 쿨타임 시작
+                isCooldown = true;
+                cooldownIndicator.classList.replace('bg-green-500', 'bg-red-500');
+                
+                // 지정된 시간 후 쿨타임 해제
+                setTimeout(() => {
+                    isCooldown = false;
+                    cooldownIndicator.classList.replace('bg-red-500', 'bg-green-500');
+                }, COOLDOWN_TIME);
+            }
+        }
+
+        function triggerAttackEffect() {
+            // 애니메이션 클래스 초기화를 위해 제거 후 강제 리플로우(Reflow) 발생
+            flashOverlay.classList.remove('flash-active');
+            attackText.classList.remove('attack-text-active');
+            
+            void flashOverlay.offsetWidth; // Trigger reflow
+            void attackText.offsetWidth;
+            
+            // 애니메이션 클래스 추가
+            flashOverlay.classList.add('flash-active');
+            attackText.classList.add('attack-text-active');
+            
+            // 진동 모터가 있는 경우 짧은 진동 발생 (안드로이드)
+            if (navigator.vibrate) {
+                navigator.vibrate(100);
+            }
         }
     </script>
 </body>

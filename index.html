@@ -2,352 +2,222 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <!-- 모바일 환경에 맞게 뷰포트 설정, 확대/축소 방지 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>안정화된 와이퍼 원기둥 & 공격 센서</title>
+    <title>기울기 센서 원기둥 제어</title>
+    <!-- Tailwind CSS 불러오기 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
     <style>
         body {
-            margin: 0;
-            padding: 0;
-            background-color: #1a1a1a;
-            color: #fff;
-            font-family: sans-serif;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            height: 100vh;
-            transition: background-color 0.1s;
-        }
-
-        body.attack { background-color: #ff0000; }
-        body.charging { background-color: #4a4a00; }
-
-        #ui-layer {
-            position: absolute;
-            top: 20px;
-            width: 90%;
-            max-width: 400px;
-            z-index: 10;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 15px;
-            border-radius: 10px;
-            box-sizing: border-box;
-        }
-
-        .slider-container {
-            display: flex;
-            flex-direction: column;
-            margin-bottom: 15px;
-        }
-
-        input[type="range"] {
-            width: 100%;
-            margin-top: 5px;
-        }
-
-        .data-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-family: monospace;
-            font-size: 14px;
-            margin-top: 10px;
-        }
-
-        /* 영점 조절 버튼 */
-        #reset-btn {
-            padding: 8px 12px;
-            font-size: 12px;
-            background-color: #ff5722;
+            /* 어두운 테마 배경 및 텍스트 색상 설정 */
+            background-color: #1a202c; 
             color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        #reset-btn:active { background-color: #e64a19; }
-
-        /* 3D 씬 설정 */
-        #scene {
-            perspective: 800px;
-            width: 200px;
-            height: 300px;
-            margin-top: 220px;
-            position: relative;
+            font-family: 'Inter', sans-serif;
+            /* 스크롤 방지 및 터치 동작 제어 */
+            overflow: hidden; 
+            touch-action: none;
         }
 
-        #cylinder {
-            width: 100%;
-            height: 100%;
+        .scene {
+            /* 3D 씬을 화면 하단 중앙에 배치 */
             position: absolute;
-            transform-style: preserve-3d;
-            transform-origin: 50% 100%; 
-            transform: rotateZ(0deg); 
-        }
-
-        .face {
-            position: absolute;
-            width: 80px;
-            height: 250px;
-            left: 60px;
-            top: 25px;
-            background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
-            border: 2px solid #fff;
-            box-sizing: border-box;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-weight: bold;
-            font-size: 24px;
-            color: #000;
-            opacity: 0.9;
-        }
-
-        .face:nth-child(1) { transform: rotateY(0deg) translateZ(96px); }
-        .face:nth-child(2) { transform: rotateY(45deg) translateZ(96px); }
-        .face:nth-child(3) { transform: rotateY(90deg) translateZ(96px); }
-        .face:nth-child(4) { transform: rotateY(135deg) translateZ(96px); }
-        .face:nth-child(5) { transform: rotateY(180deg) translateZ(96px); }
-        .face:nth-child(6) { transform: rotateY(225deg) translateZ(96px); }
-        .face:nth-child(7) { transform: rotateY(270deg) translateZ(96px); }
-        .face:nth-child(8) { transform: rotateY(315deg) translateZ(96px); }
-
-        #attack-msg {
-            position: absolute;
-            top: 50%;
+            bottom: 15%; 
             left: 50%;
-            transform: translate(-50%, -50%) scale(0.5);
-            font-size: 48px;
-            font-weight: 900;
-            color: yellow;
-            text-shadow: 0 0 20px red;
-            opacity: 0;
-            transition: all 0.1s;
-            pointer-events: none;
-            z-index: 20;
-        }
-
-        #attack-msg.show {
-            opacity: 1;
-            transform: translate(-50%, -50%) scale(1.2);
-        }
-
-        #permission-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9);
+            /* 원기둥 크기(1200px)가 모바일 화면에 들어가도록 0.35배 축소 및 수평 중앙 정렬 */
+            transform: translateX(-50%) scale(0.35);
+            /* 축소의 기준점을 하단 중앙으로 설정 */
+            transform-origin: bottom center;
             display: flex;
-            flex-direction: column;
             justify-content: center;
-            align-items: center;
-            z-index: 100;
         }
 
-        .start-btn {
-            padding: 15px 30px;
-            font-size: 18px;
-            background-color: #4facfe;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
+        .cylinder {
+            /* 요구사항에 맞춘 원기둥 크기 */
+            width: 150px;
+            height: 1200px;
+            /* 3D 금속 느낌을 주기 위한 선형 그라데이션 */
+            background: linear-gradient(to right, #4a5568 0%, #cbd5e0 40%, #ffffff 50%, #cbd5e0 60%, #2d3748 100%);
+            /* 원기둥의 위아래 가장자리를 둥글게 처리 */
+            border-radius: 75px / 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            
+            /* [핵심] 회전 축: 자동차 속도계처럼 하단 중앙(바닥 부분)을 고정 */
+            transform-origin: bottom center;
+            
+            /* 센서 값 변경 시 부드럽게 회전하도록 트랜지션 추가 */
+            transition: transform 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            will-change: transform;
+        }
+        
+        .base-pivot {
+            /* 원기둥 하단에 고정된 축 느낌을 주기 위한 장식 요소 */
+            position: absolute;
+            bottom: -20px;
+            width: 60px;
+            height: 60px;
+            background: #e2e8f0;
+            border-radius: 50%;
+            border: 5px solid #4a5568;
+            box-shadow: 0 0 15px rgba(0,0,0,0.8);
+            z-index: 10;
         }
     </style>
 </head>
-<body>
+<body class="flex flex-col h-screen relative">
 
-    <div id="permission-overlay">
-        <h2>센서 테스트</h2>
-        <p>기기를 편하게 쥐고 시작해주세요.</p>
-        <button class="start-btn" id="start-btn">센서 권한 허용 및 시작</button>
+    <!-- 경고/알림 메시지를 표시할 박스 (alert 대체) -->
+    <div id="message-box" class="hidden absolute top-10 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-2xl z-50 transition-opacity font-semibold">
+        알림 메시지
     </div>
 
-    <!-- 설정 UI -->
-    <div id="ui-layer">
-        <div class="slider-container">
-            <label>공격 민감도 (Gamma 속도): <span id="deadzone-val">300</span></label>
-            <input type="range" id="deadzone-slider" min="50" max="1000" value="300" step="10">
+    <!-- 상단 UI 및 정보 표시 영역 -->
+    <div class="relative z-20 flex flex-col items-center pt-10 px-4 w-full text-center space-y-4">
+        <h1 class="text-2xl font-bold text-gray-100">원기둥 기울기 제어</h1>
+        
+        <p class="text-sm text-gray-400 max-w-xs">
+            스마트폰을 좌우로 기울여보세요.<br>
+            (기기 센서 접근 권한이 필요할 수 있습니다.)
+        </p>
+
+        <!-- 제어 버튼 영역 -->
+        <div class="flex space-x-4 mt-4">
+            <!-- 센서 활성화 버튼 (iOS 권한 요청 용도) -->
+            <button id="start-btn" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-full font-semibold shadow-lg transition transform active:scale-95">
+                센서 시작
+            </button>
+            <!-- 영점 조절 (초기화) 버튼 -->
+            <button id="reset-btn" class="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-full font-semibold shadow-lg transition transform active:scale-95 hidden">
+                영점 초기화
+            </button>
         </div>
-        <div class="slider-container">
-            <label>요구 유지 시간 (ms): <span id="duration-val">150</span>ms</label>
-            <input type="range" id="duration-slider" min="0" max="1000" value="150" step="10">
-        </div>
-        <div class="data-row">
-            <span>보정된 기울기: <span id="val-beta">0</span>°</span>
-            <button id="reset-btn">영점 조절 (초기화)</button>
+
+        <!-- 센서 디버그 정보 패널 -->
+        <div class="bg-gray-800 bg-opacity-75 p-4 rounded-xl mt-6 border border-gray-700 w-full max-w-xs text-left shadow-inner">
+            <div class="flex justify-between mb-2">
+                <span class="text-gray-400">현재 센서값 (Gamma):</span>
+                <span id="gamma-val" class="font-mono text-blue-300">0.00°</span>
+            </div>
+            <div class="flex justify-between mb-2">
+                <span class="text-gray-400">영점 기준 (Base):</span>
+                <span id="base-val" class="font-mono text-red-300">0.00°</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-400">실제 회전 각도:</span>
+                <span id="rotation-val" class="font-mono text-green-300">0.00°</span>
+            </div>
         </div>
     </div>
 
-    <!-- 3D 씬 -->
-    <div id="scene">
-        <div id="cylinder">
-            <div class="face">1</div>
-            <div class="face">2</div>
-            <div class="face">3</div>
-            <div class="face">4</div>
-            <div class="face">5</div>
-            <div class="face">6</div>
-            <div class="face">7</div>
-            <div class="face">8</div>
-        </div>
+    <!-- 3D 원기둥 씬 -->
+    <div class="scene">
+        <div id="cylinder" class="cylinder"></div>
+        <div class="base-pivot"></div>
     </div>
-
-    <div id="attack-msg">ATTACK!</div>
 
     <script>
+        // DOM 요소 가져오기
         const cylinder = document.getElementById('cylinder');
         const startBtn = document.getElementById('start-btn');
-        const overlay = document.getElementById('permission-overlay');
-        const attackMsg = document.getElementById('attack-msg');
         const resetBtn = document.getElementById('reset-btn');
         
-        const deadzoneSlider = document.getElementById('deadzone-slider');
-        const deadzoneValDisplay = document.getElementById('deadzone-val');
-        const durationSlider = document.getElementById('duration-slider');
-        const valBetaDisplay = document.getElementById('val-beta');
+        const gammaEl = document.getElementById('gamma-val');
+        const baseEl = document.getElementById('base-val');
+        const rotationEl = document.getElementById('rotation-val');
+        const messageBox = document.getElementById('message-box');
 
-        // 상태 변수
-        let attackThreshold = 300; 
-        let requiredHoldTime = 150; 
-        
-        let isCooldown = false; 
-        let isHolding = false;
-        let holdStartTime = 0;
+        // 상태 변수 초기화
+        let isSensorActive = false;
+        let currentGamma = 0; // 현재 스마트폰의 좌우 기울기 값
+        let baseGamma = 0;    // 영점 조절을 위한 기준 값 (오프셋)
 
-        // 회전 및 필터링 변수
-        let rawBeta = 0;         // 센서에서 들어오는 날것의 각도
-        let betaOffset = 0;      // 영점 조절을 위한 기준 각도
-        let targetRotateZ = 0;
-        let currentRotateZ = 0;
+        // 알림 메시지를 화면에 표시하는 함수 (시스템 alert 창 대체)
+        function showMessage(msg) {
+            messageBox.textContent = msg;
+            messageBox.classList.remove('hidden');
+            // 3초 후 메시지 박스 숨김
+            setTimeout(() => {
+                messageBox.classList.add('hidden');
+            }, 3000);
+        }
 
-        // 슬라이더 이벤트
-        deadzoneSlider.addEventListener('input', (e) => {
-            attackThreshold = parseInt(e.target.value);
-            deadzoneValDisplay.innerText = attackThreshold;
-        });
+        // UI 텍스트 및 원기둥 회전을 업데이트하는 함수
+        function updateUI() {
+            // 요구사항: Gamma 값이 작아지면 오른쪽으로 회전 (시계방향, 양수 각도)
+            // 요구사항: Gamma 값이 커지면 왼쪽으로 회전 (반시계방향, 음수 각도)
+            // 계산식: 회전 각도 = -(현재 Gamma - 기준 Gamma)
+            let rotationAngle = -(currentGamma - baseGamma);
+            
+            // 원기둥이 거꾸로 도는 것을 방지하기 위해 회전 각도를 -90도 ~ +90도로 제한
+            if (rotationAngle > 90) rotationAngle = 90;
+            if (rotationAngle < -90) rotationAngle = -90;
 
-        durationSlider.addEventListener('input', (e) => {
-            requiredHoldTime = parseInt(e.target.value);
-            document.getElementById('duration-val').innerText = requiredHoldTime;
-        });
+            // 원기둥 DOM 요소에 CSS transform 적용 (바닥 축을 기준으로 회전)
+            cylinder.style.transform = `rotate(${rotationAngle}deg)`;
 
-        // 영점 조절 버튼 이벤트
-        resetBtn.addEventListener('click', () => {
-            // 현재 쥐고 있는 날것의 각도를 새로운 기준점(0도)으로 설정
-            betaOffset = rawBeta;
-            targetRotateZ = 0; // 즉시 수직으로 리셋
-        });
+            // 디버그용 텍스트 정보 업데이트 (소수점 2자리까지 표시)
+            gammaEl.textContent = currentGamma.toFixed(2) + '°';
+            baseEl.textContent = baseGamma.toFixed(2) + '°';
+            rotationEl.textContent = rotationAngle.toFixed(2) + '°';
+        }
 
-        startBtn.addEventListener('click', async () => {
+        // 기기 방향(기울기) 센서 이벤트 핸들러
+        function handleOrientation(event) {
+            // event.gamma는 기기의 좌우 기울기를 나타냄 (단위: 도도, 범위: -90 ~ 90)
+            if (event.gamma !== null) {
+                currentGamma = event.gamma;
+                updateUI();
+            }
+        }
+
+        // 센서 권한 요청 및 시작 함수 (특히 iOS 13+ 기기에 필수)
+        async function startSensor() {
+            // 브라우저가 DeviceOrientationEvent와 requestPermission 메서드를 지원하는지 확인 (iOS 13+ Safari)
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
+                    // 사용자에게 센서 접근 권한 요청
                     const permissionState = await DeviceOrientationEvent.requestPermission();
                     if (permissionState === 'granted') {
-                        initSensors();
+                        // 권한이 허용되면 이벤트 리스너 등록
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        activateApp();
                     } else {
-                        alert('센서 권한이 거부되었습니다.');
+                        // 권한이 거부된 경우 메시지 표시
+                        showMessage('센서 접근 권한이 거부되었습니다.');
                     }
                 } catch (error) {
                     console.error(error);
+                    showMessage('권한 요청 중 오류가 발생했습니다.');
                 }
             } else {
-                initSensors();
+                // iOS 13 미만이거나 안드로이드 등 권한 요청이 필요 없는 브라우저
+                window.addEventListener('deviceorientation', handleOrientation);
+                activateApp();
             }
-        });
-
-        // -180 ~ 180 사이의 각도로 정규화하는 함수 (360도 경계선 회전 오차 해결)
-        function normalizeAngle(angle) {
-            let a = angle % 360;
-            if (a > 180) a -= 360;
-            if (a < -180) a += 360;
-            return a;
         }
 
-        function initSensors() {
-            overlay.style.display = 'none';
-
-            window.addEventListener('deviceorientation', (event) => {
-                if (event.beta === null) return;
-                
-                let currentBeta = event.beta;
-                
-                // 1. 스파이크 필터 (값이 순간적으로 튀는 현상 방지)
-                // 단 1프레임(약 16ms)만에 50도 이상 튀는 물리적으로 불가능한 움직임은 센서 노이즈로 간주하고 무시
-                let diff = normalizeAngle(currentBeta - rawBeta);
-                if (Math.abs(diff) > 50 && rawBeta !== 0) {
-                    currentBeta = rawBeta; // 이전 정상 값으로 복구
-                }
-                rawBeta = currentBeta;
-
-                // 2. 영점(Offset) 적용
-                // 현재 기기의 각도에서 내가 설정한 영점을 빼줍니다.
-                let adjustedBeta = normalizeAngle(rawBeta - betaOffset);
-                
-                targetRotateZ = adjustedBeta * 1.5; 
-                valBetaDisplay.innerText = adjustedBeta.toFixed(1);
-            });
-
-            // 공격 로직 (이전과 동일)
-            window.addEventListener('devicemotion', (event) => {
-                if (!event.rotationRate || event.rotationRate.gamma === null) return;
-                
-                const gammaRate = event.rotationRate.gamma;
-
-                if (isCooldown) return;
-
-                if (Math.abs(gammaRate) > attackThreshold) {
-                    if (!isHolding) {
-                        isHolding = true;
-                        holdStartTime = Date.now();
-                        document.body.classList.add('charging'); 
-                    } else {
-                        const elapsedTime = Date.now() - holdStartTime;
-                        if (elapsedTime >= requiredHoldTime) {
-                            triggerAttack();
-                        }
-                    }
-                } else {
-                    if (isHolding) {
-                        isHolding = false;
-                        document.body.classList.remove('charging');
-                    }
-                }
-            });
-
-            requestAnimationFrame(animate);
+        // 센서가 성공적으로 활성화된 후 UI 요소 상태 변경
+        function activateApp() {
+            isSensorActive = true;
+            startBtn.classList.add('hidden'); // 센서 시작 버튼 숨김
+            resetBtn.classList.remove('hidden'); // 영점 초기화 버튼 표시
+            showMessage('센서가 활성화되었습니다!');
         }
 
-        // LERP 보간 및 렌더링
-        function lerp(start, end, amt) {
-            return (1 - amt) * start + amt * end;
+        // 영점 조절 (초기화) 핸들러
+        function resetCalibration() {
+            // 현재 기울기를 새로운 기준점(0도)으로 설정
+            baseGamma = currentGamma; 
+            updateUI(); // 즉시 UI 업데이트하여 원기둥을 가운데(0도)로 복귀시킴
+            showMessage('영점이 초기화되었습니다.');
         }
 
-        function animate() {
-            // 부드러운 와이퍼 움직임 적용
-            currentRotateZ = lerp(currentRotateZ, targetRotateZ, 0.15);
-            cylinder.style.transform = `rotateZ(${currentRotateZ}deg)`;
-            
-            requestAnimationFrame(animate);
-        }
+        // 버튼들에 클릭 이벤트 리스너 연결
+        startBtn.addEventListener('click', startSensor);
+        resetBtn.addEventListener('click', resetCalibration);
 
-        // 공격 발동
-        function triggerAttack() {
-            isCooldown = true;
-            isHolding = false;
-            
-            document.body.classList.remove('charging');
-            document.body.classList.add('attack');
-            attackMsg.classList.add('show');
-
-            setTimeout(() => {
-                document.body.classList.remove('attack');
-                attackMsg.classList.remove('show');
-            }, 150);
-
-            setTimeout(() => {
-                isCooldown = false;
-            }, 500);
-        }
+        // 페이지 로드 시 초기 상태 화면 렌더링 (PC 등 센서가 없는 환경에서의 테스트용)
+        updateUI();
     </script>
 </body>
 </html>
